@@ -51,6 +51,8 @@ int main(int argc, char **argv) {
       // SDL_RenderClear(renderer);
       SDL_RenderRect(renderer, &rect);
       SDL_RenderPresent(renderer);
+      // TODO: Explore render destructor and other safety/ semantic practies
+      // defined in docs!!
     }
   }
   return 0;
