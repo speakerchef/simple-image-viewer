@@ -5,12 +5,15 @@ int main(int argc, char **argv) {
 
   int x = 900;
   int y = 600;
+  const SDL_FColor color = {128.0, 0.0, 128.0, 255.0};
+  const SDL_FRect rect = {(float)x / 2, (float)y / 2, 90.0, 60.0};
+
   const char *ALPHABETS[] = {"A", "B", "C", "D", "E", "F", "G", "H", "I",
                              "J", "K", "L", "M", "N", "O", "P", "Q", "R",
                              "S", "T", "U", "V", "W", "X", "Y", "Z"};
 
   SDL_Window *window = SDL_CreateWindow("Simple Image Viewer", x, y, 0);
-  SDL_Scancode scancodes;
+  SDL_CreateRenderer(window, NULL);
 
   if (window) {
 
@@ -40,6 +43,14 @@ int main(int argc, char **argv) {
         }
         }
       }
+
+      // rendering pipeline
+
+      SDL_Renderer *renderer = SDL_GetRenderer(window);
+      SDL_SetRenderDrawColor(renderer, color.r, color.g, color.b, color.a);
+      // SDL_RenderClear(renderer);
+      SDL_RenderRect(renderer, &rect);
+      SDL_RenderPresent(renderer);
     }
   }
   return 0;
