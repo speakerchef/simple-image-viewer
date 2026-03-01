@@ -1,7 +1,6 @@
 #include <SDL3/SDL.h>
 #include <limits.h>
 #include <assert.h>
-#include <math.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
