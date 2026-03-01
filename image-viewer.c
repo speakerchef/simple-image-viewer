@@ -8,7 +8,7 @@
 #include <string.h>
 #include <unistd.h>
 
-typedef struct PNG_Header {
+typedef struct PNG_Metadata {
     uint64_t width;
     uint64_t height;
     uint64_t bit_depth;
@@ -16,12 +16,12 @@ typedef struct PNG_Header {
     uint64_t compress_method;
     uint64_t filter_method;
     uint64_t interlacing;
-} PNG_Header;
+    unsigned char *image_data;
+} PNG_Metadata;
 
-static PNG_Header header_params;
+static PNG_Metadata png_metadata;
 
 int main(int argc, char **argv) {
-
     if (argc != 2) {
         printf("Error: Invalid arguments; expected file-path "
                "'path/to/image\n");
@@ -36,6 +36,9 @@ int main(int argc, char **argv) {
         fprintf(stderr, "Could not open file.\n");
         return 1;
     }
+
+    png_metadata.image_data = NULL;
+
 
     // Get file length
     fseek(file, 0, SEEK_END);
@@ -74,12 +77,11 @@ int main(int argc, char **argv) {
 
         // Extract image size
         if (!memcmp(chunk_type, "IHDR", 4)) {
-            /*header is 13 bytes long, stored in big endian
+            /*
+             *header is 13 bytes long, stored in big endian
              *00 00 00 00 | 00 00 00 00 | 00 | 00 | 00 | 00 | 00
              *     w             h        BD   CS   CM   FM   IL
-             *
              * */ 
-
             uint64_t __width;
             uint64_t __height;
             unsigned char __bit_depth;
@@ -96,17 +98,48 @@ int main(int argc, char **argv) {
             fread(&__filter_method, 1, 1, file);
             fread(&__interlacing, 1, 1, file);
 
-            header_params.width = ntohl(__width);
-            header_params.height = ntohl(__height);
-            header_params.bit_depth = (uint64_t)__bit_depth;
-            header_params.color_space = (uint64_t)__color_space;
-            header_params.compress_method = (uint64_t)__compress_method;
-            header_params.filter_method = (uint64_t)__filter_method;
-            header_params.interlacing = (uint64_t)__interlacing;
+            png_metadata.width = ntohl(__width);
+            png_metadata.height = ntohl(__height);
+            png_metadata.bit_depth = (uint64_t)__bit_depth;
+            png_metadata.color_space = (uint64_t)__color_space;
+            png_metadata.compress_method = (uint64_t)__compress_method;
+            png_metadata.filter_method = (uint64_t)__filter_method;
+            png_metadata.interlacing = (uint64_t)__interlacing;
 
-            // printf("%llu %llu %llu %llu %llu %llu %llu\n", width, height, bit_depth, color_space, compress_method, filter_method, interlacing);
+            printf("%llu %llu %llu %llu %llu %llu %llu\n", 
+                   png_metadata.width,
+                   png_metadata.height,
+                   png_metadata.bit_depth,
+                   png_metadata.color_space, 
+                   png_metadata.compress_method, 
+                   png_metadata.filter_method, 
+                   png_metadata.interlacing
+                   );
 
             fseek(file, -chunk_sz, SEEK_CUR);
+        }
+
+        // Extract image data
+        size_t total_size = 0;
+        if (!memcmp(chunk_type, "IDAT", 4)) {
+            char img_data[chunk_sz];
+            fread(img_data, 1, chunk_sz, file);
+            unsigned char *img_data_bytes = (unsigned char*)img_data;
+
+            // Dynamically reallocate if png contains multiple IDAT chunks
+            png_metadata.image_data = realloc(png_metadata.image_data, total_size + chunk_sz);
+            total_size += chunk_sz;
+
+            png_metadata.image_data = img_data_bytes;
+
+            if (memcmp(png_metadata.image_data, img_data_bytes, chunk_sz) != 0) {
+                fprintf(stderr, "Unable to load PNG data.\n");
+                return 1;
+            }
+        }
+
+        if (!memcmp(chunk_type, "IEND", 4)) {
+            break;
         }
 
         fseek(file, chunk_sz + 4, SEEK_CUR);
@@ -115,56 +148,55 @@ int main(int argc, char **argv) {
     
     fclose(file);
 
-    uint8_t x = header_params.width;
-    uint8_t y = header_params.height;
+    uint8_t x = png_metadata.width;
+    uint8_t y = png_metadata.height;
 
-    SDL_Window *window = SDL_CreateWindow("Simple Image Viewer", x, y, 0);
+    SDL_Window *window = SDL_CreateWindow("Image Viewer", x, y, 0);
     SDL_SetWindowPosition(window, SDL_WINDOWPOS_CENTERED,
                           SDL_WINDOWPOS_CENTERED);
     SDL_CreateRenderer(window, NULL);
 
-    // if (window) {
-    //
-    //     SDL_Event event;
-    //     bool isRunning = true;
-    //
-    //     // App loop
-    //     while (isRunning) {
-    //         // printf("Is running: %d\n", isRunning);
-    //
-    //         // Event handling
-    //         while (SDL_PollEvent(&event)) {
-    //
-    //             switch (event.type) {
-    //             case SDL_EVENT_WINDOW_CLOSE_REQUESTED:
-    //                 isRunning = false;
-    //                 break;
-    //             case SDL_EVENT_KEY_DOWN:
-    //                 isRunning = !(event.key.scancode == 20);
-    //                 break;
-    //             }
-    //         }
-    //
-    //         // Rendering pipeline
-    //         SDL_Renderer *renderer = SDL_GetRenderer(window);
-    //
-    //         SDL_SetRenderDrawColor(renderer, color.r, color.g, color.b,
-    //                                color.a);
-    //         SDL_RenderClear(renderer);
-    //         SDL_SetRenderDrawColor(renderer, 255, 0, 0, 255);
-    //         //
-    //         // Do pixel rendering here.
-    //         //
-    //         SDL_RenderPresent(renderer); // Display
-    //
-    //         // TODO: Explore render destructor and other safety/ semantic
-    //         // practies defined in docs!!
-    //
-    //         // isRunning = false;
-    //     }
-    //
-    //     return 0;
-    // }
-    //
-    // printf("Error opening window.\n");
+    if (window) {
+
+        SDL_Event event;
+        bool isRunning = true;
+
+        // App loop
+        while (isRunning) {
+            // printf("Is running: %d\n", isRunning);
+
+            // Event handling
+            while (SDL_PollEvent(&event)) {
+
+                switch (event.type) {
+                case SDL_EVENT_WINDOW_CLOSE_REQUESTED:
+                    isRunning = false;
+                    break;
+                case SDL_EVENT_KEY_DOWN:
+                    isRunning = !(event.key.scancode == 20);
+                    break;
+                }
+            }
+
+            // Rendering pipeline
+            SDL_Renderer *renderer = SDL_GetRenderer(window);
+
+            SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+            SDL_RenderClear(renderer);
+            // SDL_SetRenderDrawColor(renderer, 255, 0, 0, 255);
+            //
+            // Do pixel rendering here.
+            //
+            SDL_RenderPresent(renderer); // Display
+
+            // TODO: Explore render destructor and other safety/ semantic
+            // practies defined in docs!!
+
+            // isRunning = false;
+        }
+
+        return 0;
+    }
+
+    printf("Error opening window.\n");
 }
