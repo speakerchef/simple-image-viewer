@@ -1,5 +1,7 @@
 .cache/
 .DS_Store
-builds/
+build/
 .gitignore
+.clang-format
+resources/
 
