@@ -1,5 +1,7 @@
 #include <SDL3/SDL.h>
 #include <limits.h>
+#include <assert.h>
+#include <math.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -7,6 +9,15 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <zlib.h>
+
+#define PNG_COMPRESSION_LEVEL 8
+
+#define CS_GRAY 0
+#define CS_RGB 2
+#define CS_PLTE 3
+#define CS_GRAY_ALPHA 4
+#define CS_RGB_ALPHA 6
 
 typedef struct PNG_Metadata {
     uint64_t width;
@@ -16,7 +27,11 @@ typedef struct PNG_Metadata {
     uint64_t compress_method;
     uint64_t filter_method;
     uint64_t interlacing;
+    uint64_t pixel_size;
+    uint64_t num_channels;
     unsigned char *image_data;
+    SDL_Color *pixel_color;
+    unsigned char *palette;
 } PNG_Metadata;
 
 static PNG_Metadata png_metadata;
@@ -44,22 +59,20 @@ int main(int argc, char **argv) {
     fseek(file, 0, SEEK_END);
     size_t file_len = ftell(file);
     fseek(file, 0, SEEK_SET);
+    
+    #define WINDOW_SIZE file_len
 
     // Get PNG file identifier (first 8 bytes of the file)
     char identifier[8] = {0}; 
     fread(identifier, 1, 8, file);
     unsigned char *byteid = (unsigned char*)identifier;
-    // for (size_t i = 0; i < 8; i++) {
-    //     printf("%02x", byteid[i]);
-    // }
-    // printf("\n");
 
     unsigned char __png_id[8] = {0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a}; // PNG Spec ID
     bool is_PNG = !(memcmp(byteid, __png_id, 8));
-    // printf("%d\n", is_PNG);
 
     fseek(file, 8, SEEK_SET); // Skip past ID to data chunks
 
+    // Process chunks
     while(1) {
         unsigned long chunk_sz = 0;
         char chunk_type[4]; 
@@ -106,15 +119,52 @@ int main(int argc, char **argv) {
             png_metadata.filter_method = (uint64_t)__filter_method;
             png_metadata.interlacing = (uint64_t)__interlacing;
 
-            printf("%llu %llu %llu %llu %llu %llu %llu\n", 
+            // Set color space information
+            switch (png_metadata.color_space) {
+                case CS_GRAY: {
+                    png_metadata.num_channels = 1;
+                    break;
+                }
+                case CS_RGB: {
+                    png_metadata.num_channels = 3;
+                    break;
+                }
+                case CS_PLTE: {
+                    png_metadata.num_channels = 1;
+                    break;
+                }
+                case CS_GRAY_ALPHA: {
+                    png_metadata.num_channels = 2;
+                    break;
+                }
+                case CS_RGB_ALPHA: {
+                    png_metadata.num_channels = 4;
+                    break;
+                }
+            }
+
+            printf("%llu %llu %llu %llu %llu %llu %llu %llu\n", 
                    png_metadata.width,
                    png_metadata.height,
                    png_metadata.bit_depth,
                    png_metadata.color_space, 
                    png_metadata.compress_method, 
                    png_metadata.filter_method, 
-                   png_metadata.interlacing
+                   png_metadata.interlacing,
+                   png_metadata.num_channels
                    );
+
+            fseek(file, -chunk_sz, SEEK_CUR);
+        }
+
+        // Extract color palette/alpha information if available
+        if (!memcmp(chunk_type, "PLTE", 4)) {
+            png_metadata.palette = malloc(256 * 3);
+            char palette[256 * 3];
+
+            fread(palette, 1, chunk_sz, file);
+            unsigned char *palette_bytes = (unsigned char*)palette;
+            png_metadata.palette = palette_bytes;
 
             fseek(file, -chunk_sz, SEEK_CUR);
         }
@@ -130,21 +180,67 @@ int main(int argc, char **argv) {
             png_metadata.image_data = realloc(png_metadata.image_data, total_size + chunk_sz);
             total_size += chunk_sz;
 
-            png_metadata.image_data = img_data_bytes;
+            z_stream stream; int level = PNG_COMPRESSION_LEVEL;
+            stream.data_type = Z_BINARY;
+            stream.avail_in = 0;
+            stream.next_in = Z_NULL;
+            stream.zalloc = Z_NULL;
+            stream.opaque = Z_NULL;
+            stream.zfree = Z_NULL;
 
-            if (memcmp(png_metadata.image_data, img_data_bytes, chunk_sz) != 0) {
-                fprintf(stderr, "Unable to load PNG data.\n");
-                return 1;
+            int ret = inflateInit(&stream);
+            if (ret != Z_OK) {
+                return ret;
             }
+
+            // Note: no filtering pipeline yet
+            size_t scanline_size = (png_metadata.width * png_metadata.bit_depth + 7) / 8;
+            size_t output_size = png_metadata.num_channels * png_metadata.height * (scanline_size + 1); // +1 to account for filter byte
+            stream.avail_in = total_size;
+            stream.avail_out = output_size;
+            stream.next_in = img_data_bytes;
+            stream.next_out = png_metadata.image_data;
+
+            // https://zlib.net/zlib_how.html
+            ret = inflate(&stream, Z_NO_FLUSH);
+            assert(ret != Z_STREAM_ERROR);
+            switch (ret) {
+            case Z_NEED_DICT:
+                ret = Z_DATA_ERROR;     /* and fall through */
+            case Z_DATA_ERROR:
+            case Z_MEM_ERROR:
+                (void)inflateEnd(&stream);
+                return ret;
+            }
+            (void)inflateEnd(&stream);
+
         }
 
+        // End of file
         if (!memcmp(chunk_type, "IEND", 4)) {
             break;
         }
 
         fseek(file, chunk_sz + 4, SEEK_CUR);
     }
-      
+
+    // Get pixel colors
+    png_metadata.pixel_color = malloc(sizeof(SDL_Color) * png_metadata.width * png_metadata.height); 
+    size_t scanline_width = png_metadata.width + 1; 
+
+    for (size_t y = 0; y < png_metadata.height; y++) {
+        for (size_t x = 0; x < png_metadata.width; x++) {
+
+            uint8_t index = png_metadata.image_data[y * scanline_width + x + 1];
+            uint16_t stride = index * 3;
+            uint8_t r = png_metadata.palette[stride];
+            uint8_t g = png_metadata.palette[stride + 1];
+            uint8_t b = png_metadata.palette[stride + 2];
+
+            png_metadata.pixel_color[y * png_metadata.width + x] = (SDL_Color){r, g, b, 255};
+
+        }
+    }
     
     fclose(file);
 
@@ -178,21 +274,32 @@ int main(int argc, char **argv) {
                 }
             }
 
-            // Rendering pipeline
-            SDL_Renderer *renderer = SDL_GetRenderer(window);
 
+            SDL_Renderer *renderer = SDL_GetRenderer(window);
             SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
             SDL_RenderClear(renderer);
-            // SDL_SetRenderDrawColor(renderer, 255, 0, 0, 255);
-            //
-            // Do pixel rendering here.
-            //
-            SDL_RenderPresent(renderer); // Display
+
+            // Rendering pipeline
+            for (size_t dy = 0; dy < y; dy++) {
+                for (size_t dx = 0; dx < x; dx++) {
+
+                    uint8_t r = png_metadata.pixel_color[dy * png_metadata.width + dx].r;
+                    uint8_t g = png_metadata.pixel_color[dy * png_metadata.width + dx].g;
+                    uint8_t b = png_metadata.pixel_color[dy * png_metadata.width + dx].b;
+                    uint8_t a = png_metadata.pixel_color[dy * png_metadata.width + dx].a;
+
+                    SDL_SetRenderDrawColor(renderer, r, g, b, a);
+
+                    SDL_RenderPoint(renderer, dx, dy);
+
+
+                }
+            } 
+
+            SDL_RenderPresent(renderer);
 
             // TODO: Explore render destructor and other safety/ semantic
             // practies defined in docs!!
-
-            // isRunning = false;
         }
 
         return 0;
