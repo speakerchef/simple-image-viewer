@@ -54,10 +54,10 @@ int uncompress_png(unsigned char *input,
                    PNG_Metadata *md);
 int unfilter_png(const unsigned char *ftype, PNG_Metadata *md);
 
-
-
-
-
+int __filter_sub(PNG_Metadata *md, const size_t start_idx);
+int __filter_up(PNG_Metadata *md, const size_t start_idx);
+int __filter_avg(PNG_Metadata *md, const size_t start_y, const size_t start_x);
+int __filter_paeth(PNG_Metadata *md, const size_t start_y, const size_t start_x);
 
 void load_png_colors(PNG_Metadata *md, uint32_t alpha_data) {
 
@@ -156,6 +156,69 @@ int uncompress_png(unsigned char *in_buf,
     return 0;
 }
 
+
+int __filter_sub(PNG_Metadata *md, const size_t start_idx){
+    /*
+     * To remove the Sub filter, we will add the previous pixel
+     * to the current pixel to reconstruct the current pixel.
+     * It is always the case that the prev pixel of first pixel 
+     * in every scanline is 0.
+     * */
+    if (md->width < 1 || md->height < 1 || md->num_channels < 1){
+        fprintf(stderr, "Error: Could not apply filter; Invalid metadata!\n");
+        return 1;
+    }
+
+    unsigned char unfiltered[md->width * md->height];
+    size_t scanline_width = md->width * md->num_channels * md->bytes_per_channel + 1;
+
+    for (size_t y = 0; y < md->height; y++) {
+        for (size_t x = 0; x < md->width; x++) {
+            size_t offset = y * scanline_width + x + 1;
+            uint32_t prev = x ? md->image_data[offset - 1] 
+                             : 0;
+
+            unfiltered[y * md->width + x] = md->image_data[offset] + prev;
+        }
+    }
+
+    return 0;
+}
+int __filter_up(PNG_Metadata *md, const size_t start_idx) {
+    /* 
+     * To remove the Up filter, we will 
+     * add the previous pixel at the previous
+     * row to the current pixel to reconstruct the 
+     * current pixel. It is always the case 
+     * that the prev pixel of first pixel 
+     * in every scanline is 0.
+     */
+    if (md->width < 1 || md->height < 1 || md->num_channels < 1){
+        fprintf(stderr, "Error: Could not apply filter; Invalid metadata!\n");
+        return 1;
+    }
+
+    unsigned char unfiltered[md->width * md->height];
+    size_t scanline_width = md->width * md->num_channels * md->bytes_per_channel + 1;
+
+    for (size_t y = 0; y < md->height; y++) {
+        for (size_t x = 0; x < md->width; x++) {
+            size_t offset = y * scanline_width + x + 1;
+            uint32_t prev = y ? md->image_data[(y - 1) * scanline_width + x + 1] 
+                              : 0;
+
+            unfiltered[y * md->width + x] = md->image_data[offset] + prev;
+        }
+    }
+    return 0;
+}
+int __filter_avg(PNG_Metadata *md, const size_t start_y, const size_t start_x) {
+    return 0;
+}
+int __filter_paeth(PNG_Metadata *md, const size_t start_y, const size_t start_x) {
+    return 0;
+}
+
 int unfilter_png(const unsigned char *ftype, PNG_Metadata *md) {
     
     for (size_t i = 0; i < md->height; i++){
@@ -183,8 +246,7 @@ int unfilter_png(const unsigned char *ftype, PNG_Metadata *md) {
 
 int main(int argc, char **argv) {
     if (argc != 2) {
-        printf("Error: Invalid arguments; expected file-path "
-               "'path/to/image\n");
+        printf("Error: Invalid arguments; expected file-path 'path/to/image'\n");
 
         return 0;
     }
