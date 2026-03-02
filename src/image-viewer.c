@@ -1,6 +1,7 @@
 #include <SDL3/SDL.h>
 #include <assert.h>
 #include <limits.h>
+#include <stdatomic.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -46,20 +47,30 @@ typedef struct PNG_Metadata {
 } PNG_Metadata;
 
 // Fwd decs
-void load_png_colors(PNG_Metadata *md, uint32_t alpha_data);
+int load_png_colors(PNG_Metadata *md, uint32_t alpha_data);
 int uncompress_png(unsigned char *input, 
                    unsigned char *output, 
                    const size_t in_buf_size, 
                    const size_t out_buf_size, 
                    PNG_Metadata *md);
-int unfilter_png(const unsigned char *ftype, PNG_Metadata *md);
+int unfilter_png(const unsigned char ftype, 
+                 const size_t row_idx, 
+                 unsigned char *unfiltered, 
+                 const size_t scanline_width, 
+                 const size_t stride,
+                 PNG_Metadata *md);
 
-int __filter_sub(PNG_Metadata *md, const size_t start_idx);
-int __filter_up(PNG_Metadata *md, const size_t start_idx);
+int __filter_sub(PNG_Metadata *md, unsigned char *unfiltered, const size_t row_idx);
+int __filter_up(PNG_Metadata *md, unsigned char *unfiltered, const size_t row_idx);
 int __filter_avg(PNG_Metadata *md, const size_t start_y, const size_t start_x);
 int __filter_paeth(PNG_Metadata *md, const size_t start_y, const size_t start_x);
 
-void load_png_colors(PNG_Metadata *md, uint32_t alpha_data) {
+int load_png_colors(PNG_Metadata *md, uint32_t alpha_data) {
+
+    if (md->width < 1 || md->height < 1 || md->num_channels < 1){
+        fprintf(stderr, "Error: Could not apply filter; Invalid metadata!\n");
+        return 1;
+    }
 
     md->pixel_color = malloc(sizeof(SDL_Color) * md->width * md->height);
     md->ftype = malloc(sizeof(unsigned char) * md->height);
@@ -87,18 +98,27 @@ void load_png_colors(PNG_Metadata *md, uint32_t alpha_data) {
 
         // if (md->color_space == PNG_CS_RGB || md->color_space == CS_RGB_ALPHA) {
         case PNG_CS_RGB: {
+
             printf("Loading PNG_CS_RGB Colors\n");
+
+            size_t stride = md->width * md->num_channels * md->bytes_per_channel;
+            unsigned char *unfiltered = malloc(sizeof(unsigned char) * md->height * stride);
             for (size_t y = 0; y < md->height; y++) {
 
                 // Extract filter type
                 md->ftype[y] = md->image_data[y * scanline_width];
 
-                for (size_t x = 0; x < md->width; x++) {
-                    size_t offset = (y * scanline_width) + (x * md->num_channels * md->bytes_per_channel) + 1;
+                int ret;
+                if ((ret = unfilter_png(md->ftype[y], y, unfiltered, scanline_width, stride, md)) != 0) {
+                    return ret; 
+                }
 
-                    r = md->image_data[offset];
-                    g = md->image_data[offset + 2];
-                    b = md->image_data[offset + 4];
+                for (size_t x = 0; x < md->width; x++) {
+                    size_t offset = (y * stride) + (x * md->num_channels * md->bytes_per_channel);
+
+                    r = unfiltered[offset];
+                    g = unfiltered[offset + 2];
+                    b = unfiltered[offset + 4];
                     // a = alpha_data ? alpha_data : 255;
                     a = 255;
 
@@ -108,6 +128,8 @@ void load_png_colors(PNG_Metadata *md, uint32_t alpha_data) {
             break;
         }
     }
+
+    return 0;
 }
 
 int uncompress_png(unsigned char *in_buf, 
@@ -156,8 +178,7 @@ int uncompress_png(unsigned char *in_buf,
     return 0;
 }
 
-
-int __filter_sub(PNG_Metadata *md, const size_t start_idx){
+int __filter_sub(PNG_Metadata *md, unsigned char *unfiltered, const size_t row_idx){
     /*
      * To remove the Sub filter, we will add the previous pixel
      * to the current pixel to reconstruct the current pixel.
@@ -169,22 +190,22 @@ int __filter_sub(PNG_Metadata *md, const size_t start_idx){
         return 1;
     }
 
-    unsigned char unfiltered[md->width * md->height];
     size_t scanline_width = md->width * md->num_channels * md->bytes_per_channel + 1;
+    size_t stride = md->width * md->num_channels * md->bytes_per_channel;
+    size_t decrement_sz = md->num_channels * md->bytes_per_channel;
 
-    for (size_t y = 0; y < md->height; y++) {
-        for (size_t x = 0; x < md->width; x++) {
-            size_t offset = y * scanline_width + x + 1;
-            uint32_t prev = x ? md->image_data[offset - 1] 
-                             : 0;
-
-            unfiltered[y * md->width + x] = md->image_data[offset] + prev;
-        }
+    for (size_t x = 0; x < stride; x++) {
+        size_t offset = row_idx * scanline_width + x + 1;
+        uint32_t prev = (x >= decrement_sz) ? unfiltered[row_idx * stride + (x - decrement_sz)] 
+                                            : 0;
+       
+        unfiltered[row_idx * stride + x] = md->image_data[offset] + prev;
     }
 
     return 0;
 }
-int __filter_up(PNG_Metadata *md, const size_t start_idx) {
+
+int __filter_up(PNG_Metadata *md, unsigned char *unfiltered, const size_t row_idx) {
     /* 
      * To remove the Up filter, we will 
      * add the previous pixel at the previous
@@ -198,20 +219,21 @@ int __filter_up(PNG_Metadata *md, const size_t start_idx) {
         return 1;
     }
 
-    unsigned char unfiltered[md->width * md->height];
     size_t scanline_width = md->width * md->num_channels * md->bytes_per_channel + 1;
+    size_t stride = md->width * md->num_channels * md->bytes_per_channel;
 
-    for (size_t y = 0; y < md->height; y++) {
-        for (size_t x = 0; x < md->width; x++) {
-            size_t offset = y * scanline_width + x + 1;
-            uint32_t prev = y ? md->image_data[(y - 1) * scanline_width + x + 1] 
-                              : 0;
+    for (size_t x = 0; x < stride; x++) {
 
-            unfiltered[y * md->width + x] = md->image_data[offset] + prev;
-        }
+        size_t offset = row_idx * scanline_width + x + 1;
+        uint32_t prev = row_idx ? unfiltered[(row_idx - 1) * stride + x] 
+                            : 0;
+
+        unfiltered[row_idx * stride + x] = md->image_data[offset] + prev;
     }
+
     return 0;
 }
+
 int __filter_avg(PNG_Metadata *md, const size_t start_y, const size_t start_x) {
     return 0;
 }
@@ -219,27 +241,34 @@ int __filter_paeth(PNG_Metadata *md, const size_t start_y, const size_t start_x)
     return 0;
 }
 
-int unfilter_png(const unsigned char *ftype, PNG_Metadata *md) {
+int unfilter_png(const unsigned char ftype, 
+                 const size_t row_idx, 
+                 unsigned char *unfiltered, 
+                 const size_t scanline_width,
+                 const size_t stride,
+                 PNG_Metadata *md) {
     
-    for (size_t i = 0; i < md->height; i++){
-        printf("%u", ftype[i]);
-        // switch (ftype[i]) {
-        //     case PNG_FILTER_NONE: return 0;
-        //     case PNG_FILTER_SUB: {
-        //         //todo
-        //     }
-        //     case PNG_FILTER_UP: {
-        //         //todo
-        //     }
-        //     case PNG_FILTER_AVG: {
-        //         break;
-        //     }
-        //     case PNG_FILTER_PAETH: {
-        //         break;
-        //     }
-        // }
+    switch (ftype) {
+        case PNG_FILTER_NONE: { 
+            size_t offset = row_idx * scanline_width + 1;
+            memcpy(unfiltered + row_idx * stride, md->image_data + offset, stride);
+            break;
+        };
+        case PNG_FILTER_SUB: {
+            __filter_sub(md, unfiltered, row_idx);
+            break;
+        }
+        case PNG_FILTER_UP: {
+            __filter_up(md, unfiltered, row_idx);
+            break;
+        }
+        case PNG_FILTER_AVG: {
+            break;
+        }
+        case PNG_FILTER_PAETH: {
+            break;
+        }
     }
-    printf("\n");
 
     return 0;
 }
@@ -391,14 +420,15 @@ int main(int argc, char **argv) {
         size_t output_size = png_metadata.height * (scanline_size + 1); // +1 to account for filter byte
         unsigned char *output_buffer = malloc(sizeof(unsigned char) * output_size);
 
-        uncompress_png(png_metadata.image_data, output_buffer, png_metadata.total_size, output_size, &png_metadata);
-        // TODO: Undo filters on data
-        // Filter types:
-        // 
+        int ret;
+        if ((ret = uncompress_png(png_metadata.image_data, 
+                                  output_buffer, 
+                                  png_metadata.total_size, 
+                                  output_size, 
+                                  &png_metadata)) != 0) { return ret; };
 
         png_metadata.alpha_data = 0;
-        load_png_colors(&png_metadata, png_metadata.alpha_data);
-        unfilter_png(png_metadata.ftype, &png_metadata);
+        if ((ret = load_png_colors(&png_metadata, png_metadata.alpha_data)) != 0) { return ret; }
 
         printf("LOADED COLORS\n");
 
