@@ -62,8 +62,8 @@ int unfilter_png(const unsigned char ftype,
 
 int __filter_sub(PNG_Metadata *md, unsigned char *unfiltered, const size_t row_idx);
 int __filter_up(PNG_Metadata *md, unsigned char *unfiltered, const size_t row_idx);
-int __filter_avg(PNG_Metadata *md, const size_t start_y, const size_t start_x);
-int __filter_paeth(PNG_Metadata *md, const size_t start_y, const size_t start_x);
+int __filter_avg(PNG_Metadata *md, unsigned char *unfiltered, const size_t row_idx); 
+int __filter_paeth(PNG_Metadata *md, unsigned char *unfiltered, const size_t row_idx); 
 
 int load_png_colors(PNG_Metadata *md, uint32_t alpha_data) {
 
@@ -234,10 +234,54 @@ int __filter_up(PNG_Metadata *md, unsigned char *unfiltered, const size_t row_id
     return 0;
 }
 
-int __filter_avg(PNG_Metadata *md, const size_t start_y, const size_t start_x) {
+int __filter_avg(PNG_Metadata *md, unsigned char *unfiltered, const size_t row_idx) {
+
+    if (md->width < 1 || md->height < 1 || md->num_channels < 1){
+        fprintf(stderr, "Error: Could not apply filter; Invalid metadata!\n");
+        return 1;
+    }
+
+    size_t scanline_width = md->width * md->num_channels * md->bytes_per_channel + 1;
+    size_t stride = md->width * md->num_channels * md->bytes_per_channel;
+    size_t decrement_sz = md->num_channels * md->bytes_per_channel;
+
+    for (size_t x = 0; x < stride; x++) {
+
+        size_t offset = row_idx * scanline_width + x + 1;
+        uint32_t prev_a = (x >= decrement_sz) ? unfiltered[row_idx * stride + (x - decrement_sz)] 
+                                            : 0;
+        uint32_t prev_b = row_idx ? unfiltered[(row_idx - 1) * stride + x] 
+                            : 0;
+
+        unfiltered[row_idx * stride + x] = md->image_data[offset] + ((prev_a + prev_b) >> 1);
+    }
+
     return 0;
 }
-int __filter_paeth(PNG_Metadata *md, const size_t start_y, const size_t start_x) {
+int __filter_paeth(PNG_Metadata *md, unsigned char *unfiltered, const size_t row_idx) {
+
+        if (md->width < 1 || md->height < 1 || md->num_channels < 1){
+        fprintf(stderr, "Error: Could not apply filter; Invalid metadata!\n");
+        return 1;
+    }
+
+    size_t scanline_width = md->width * md->num_channels * md->bytes_per_channel + 1;
+    size_t stride = md->width * md->num_channels * md->bytes_per_channel;
+    size_t decrement_sz = md->num_channels * md->bytes_per_channel;
+
+    for (size_t x = 0; x < stride; x++) {
+
+        size_t offset = row_idx * scanline_width + x + 1;
+        uint32_t prev_a = (x >= decrement_sz) ? unfiltered[row_idx * stride + (x - decrement_sz)] 
+                                            : 0;
+        uint32_t prev_b = row_idx ? unfiltered[(row_idx - 1) * stride + x] 
+                            : 0;
+        uint32_t prev_c = (x >= decrement_sz) ? unfiltered[(row_idx - 1) * stride + (x - decrement_sz)]
+                                            : 0;
+
+        unfiltered[row_idx * stride + x] = md->image_data[offset] + ((prev_a + prev_b) >> 1);
+    }
+
     return 0;
 }
 
@@ -263,9 +307,11 @@ int unfilter_png(const unsigned char ftype,
             break;
         }
         case PNG_FILTER_AVG: {
+            __filter_avg(md, unfiltered, row_idx);
             break;
         }
         case PNG_FILTER_PAETH: {
+            __filter_paeth(md, unfiltered, row_idx);
             break;
         }
     }
@@ -334,7 +380,7 @@ int main(int argc, char **argv) {
                 /*
                  *header is 13 bytes long, stored in big endian
                  *00 00 00 00 | 00 00 00 00 | 00 | 00 | 00 | 00 | 00
-                 *     w             h        BD   PNG_CS   CM   FM   IL
+                 *     w             h        BD   CS   CM   FM   IL
                  * */
                 fread(&png_metadata.width, 1, 4, file);
                 fread(&png_metadata.height, 1, 4, file);
