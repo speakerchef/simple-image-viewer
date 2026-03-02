@@ -12,7 +12,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 # This assumes the SDL source is available in vendored/SDL
 # add_subdirectory(vendored/SDL EXCLUDE_FROM_ALL)
 # Create your game executable target as usual
-add_executable(image-viewer WIN32 image-viewer.c)
+add_executable(image-viewer WIN32 ./src/image-viewer.c)
 
 # Link to the actual SDL3 library.
 target_link_libraries(image-viewer PRIVATE SDL3::SDL3 ZLIB::ZLIB)
