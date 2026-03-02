@@ -12,11 +12,19 @@
 
 #define PNG_COMPRESSION_LEVEL 8
 
-#define CS_GRAY 0
-#define CS_RGB 2
-#define CS_PLTE 3
-#define CS_GRAY_ALPHA 4
-#define CS_RGB_ALPHA 6
+// PNG color space types
+#define PNG_CS_GRAY 0
+#define PNG_CS_RGB 2
+#define PNG_CS_PLTE 3
+#define PNG_CS_GRAY_ALPHA 4
+#define PNG_CS_RGB_ALPHA 6
+
+// PNG filter types
+#define PNG_FILTER_NONE 0
+#define PNG_FILTER_SUB 1
+#define PNG_FILTER_UP 2
+#define PNG_FILTER_AVG 3
+#define PNG_FILTER_PAETH 4
 
 typedef struct PNG_Metadata {
     uint64_t width;
@@ -26,7 +34,8 @@ typedef struct PNG_Metadata {
     unsigned char bit_depth;
     unsigned char color_space;
     unsigned char compress_method;
-    unsigned char filter_method;
+    unsigned char filter_method; // Useless
+    unsigned char *ftype; // Only this is used to determine filter method
     unsigned char interlacing;
     uint64_t pixel_size;
     uint64_t num_channels;
@@ -43,16 +52,23 @@ int uncompress_png(unsigned char *input,
                    const size_t in_buf_size, 
                    const size_t out_buf_size, 
                    PNG_Metadata *md);
-;
+int unfilter_png(const unsigned char *ftype, PNG_Metadata *md);
+
+
+
+
+
+
 void load_png_colors(PNG_Metadata *md, uint32_t alpha_data) {
 
     md->pixel_color = malloc(sizeof(SDL_Color) * md->width * md->height);
+    md->ftype = malloc(sizeof(unsigned char) * md->height);
     size_t scanline_width = (md->width * md->num_channels * md->bytes_per_channel) + 1;
     uint8_t r, g, b, a;
 
     // Handle color loading for all color spaces 
     switch (md->color_space) {
-        case CS_PLTE: {
+        case PNG_CS_PLTE: {
             for (size_t y = 0; y < md->height; y++) {
                 for (size_t x = 0; x < md->width; x++) {
                     uint8_t index = md->image_data[y * scanline_width + x + 1];
@@ -69,14 +85,17 @@ void load_png_colors(PNG_Metadata *md, uint32_t alpha_data) {
             break;
         }
 
-        // if (md->color_space == CS_RGB || md->color_space == CS_RGB_ALPHA) {
-        case CS_RGB: {
-            printf("Loading CS_RGB Colors\n");
+        // if (md->color_space == PNG_CS_RGB || md->color_space == CS_RGB_ALPHA) {
+        case PNG_CS_RGB: {
+            printf("Loading PNG_CS_RGB Colors\n");
             for (size_t y = 0; y < md->height; y++) {
-                for (size_t x = 0; x < md->width; x++) {
-                    size_t offset = y * scanline_width + 1 + (x * md->num_channels * md->bytes_per_channel);
 
-                    // TODO: implement filtering
+                // Extract filter type
+                md->ftype[y] = md->image_data[y * scanline_width];
+
+                for (size_t x = 0; x < md->width; x++) {
+                    size_t offset = (y * scanline_width) + (x * md->num_channels * md->bytes_per_channel) + 1;
+
                     r = md->image_data[offset];
                     g = md->image_data[offset + 2];
                     b = md->image_data[offset + 4];
@@ -137,6 +156,31 @@ int uncompress_png(unsigned char *in_buf,
     return 0;
 }
 
+int unfilter_png(const unsigned char *ftype, PNG_Metadata *md) {
+    
+    for (size_t i = 0; i < md->height; i++){
+        printf("%u", ftype[i]);
+        // switch (ftype[i]) {
+        //     case PNG_FILTER_NONE: return 0;
+        //     case PNG_FILTER_SUB: {
+        //         //todo
+        //     }
+        //     case PNG_FILTER_UP: {
+        //         //todo
+        //     }
+        //     case PNG_FILTER_AVG: {
+        //         break;
+        //     }
+        //     case PNG_FILTER_PAETH: {
+        //         break;
+        //     }
+        // }
+    }
+    printf("\n");
+
+    return 0;
+}
+
 int main(int argc, char **argv) {
     if (argc != 2) {
         printf("Error: Invalid arguments; expected file-path "
@@ -144,7 +188,6 @@ int main(int argc, char **argv) {
 
         return 0;
     }
-
     const char *path = argv[1];
     FILE *file = fopen(path, "rb");
 
@@ -200,7 +243,7 @@ int main(int argc, char **argv) {
                 /*
                  *header is 13 bytes long, stored in big endian
                  *00 00 00 00 | 00 00 00 00 | 00 | 00 | 00 | 00 | 00
-                 *     w             h        BD   CS   CM   FM   IL
+                 *     w             h        BD   PNG_CS   CM   FM   IL
                  * */
                 fread(&png_metadata.width, 1, 4, file);
                 fread(&png_metadata.height, 1, 4, file);
@@ -216,23 +259,23 @@ int main(int argc, char **argv) {
 
                 // Set color space information
                 switch (png_metadata.color_space) {
-                    case CS_GRAY: {
+                    case PNG_CS_GRAY: {
                         png_metadata.num_channels = 1;
                         break;
                     }
-                    case CS_RGB: {
+                    case PNG_CS_RGB: {
                         png_metadata.num_channels = 3;
                         break;
                     }
-                    case CS_PLTE: {
+                    case PNG_CS_PLTE: {
                         png_metadata.num_channels = 1;
                         break;
                     }
-                    case CS_GRAY_ALPHA: {
+                    case PNG_CS_GRAY_ALPHA: {
                         png_metadata.num_channels = 2;
                         break;
                     }
-                    case CS_RGB_ALPHA: {
+                    case PNG_CS_RGB_ALPHA: {
                         png_metadata.num_channels = 4;
                         break;
                     }
@@ -287,10 +330,13 @@ int main(int argc, char **argv) {
         unsigned char *output_buffer = malloc(sizeof(unsigned char) * output_size);
 
         uncompress_png(png_metadata.image_data, output_buffer, png_metadata.total_size, output_size, &png_metadata);
-        printf("Data uncompressed\n");
+        // TODO: Undo filters on data
+        // Filter types:
+        // 
 
         png_metadata.alpha_data = 0;
         load_png_colors(&png_metadata, png_metadata.alpha_data);
+        unfilter_png(png_metadata.ftype, &png_metadata);
 
         printf("LOADED COLORS\n");
 
@@ -302,8 +348,10 @@ int main(int argc, char **argv) {
     uint32_t y = png_metadata.height;
 
     SDL_Window *window = SDL_CreateWindow("Image Viewer", x, y, 0);
-    SDL_SetWindowPosition(window, SDL_WINDOWPOS_CENTERED,
-                          SDL_WINDOWPOS_CENTERED);
+    SDL_SetWindowPosition(window, 
+                          SDL_WINDOWPOS_CENTERED,
+                          SDL_WINDOWPOS_CENTERED
+                        );
     SDL_CreateRenderer(window, NULL);
 
     if (window) {
@@ -313,11 +361,9 @@ int main(int argc, char **argv) {
 
         // App loop
         while (isRunning) {
-            // printf("Is running: %d\n", isRunning);
 
             // Event handling
             while (SDL_PollEvent(&event)) {
-
                 switch (event.type) {
                 case SDL_EVENT_WINDOW_CLOSE_REQUESTED:
                     isRunning = false;
