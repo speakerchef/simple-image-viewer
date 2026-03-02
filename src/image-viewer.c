@@ -260,7 +260,7 @@ int __filter_avg(PNG_Metadata *md, unsigned char *unfiltered, const size_t row_i
 }
 int __filter_paeth(PNG_Metadata *md, unsigned char *unfiltered, const size_t row_idx) {
 
-        if (md->width < 1 || md->height < 1 || md->num_channels < 1){
+    if (md->width < 1 || md->height < 1 || md->num_channels < 1){
         fprintf(stderr, "Error: Could not apply filter; Invalid metadata!\n");
         return 1;
     }
@@ -270,7 +270,9 @@ int __filter_paeth(PNG_Metadata *md, unsigned char *unfiltered, const size_t row
     size_t decrement_sz = md->num_channels * md->bytes_per_channel;
 
     for (size_t x = 0; x < stride; x++) {
-
+        /*
+         * using paeth predictor as shown at https://www.w3.org/TR/png-3/#paethpredictor-function 
+         * */
         size_t offset = row_idx * scanline_width + x + 1;
         uint32_t prev_a = (x >= decrement_sz) ? unfiltered[row_idx * stride + (x - decrement_sz)] 
                                             : 0;
