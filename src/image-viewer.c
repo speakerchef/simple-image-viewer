@@ -75,15 +75,15 @@ int load_png_colors(PNG_Metadata *md, uint32_t alpha_data) {
     md->pixel_color = malloc(sizeof(SDL_Color) * md->width * md->height);
     md->ftype = malloc(sizeof(unsigned char) * md->height);
     size_t scanline_width = (md->width * md->num_channels * md->bytes_per_channel) + 1;
-    uint8_t r, g, b, a;
+    uint32_t r, g, b, a;
 
     // Handle color loading for all color spaces 
     switch (md->color_space) {
         case PNG_CS_PLTE: {
             for (size_t y = 0; y < md->height; y++) {
                 for (size_t x = 0; x < md->width; x++) {
-                    uint8_t index = md->image_data[y * scanline_width + x + 1];
-                    uint16_t stride = index * 3;
+                    uint32_t index = md->image_data[y * scanline_width + x + 1];
+                    uint32_t stride = index * 3;
 
                     r = md->palette[stride];
                     g = md->palette[stride + 1];
