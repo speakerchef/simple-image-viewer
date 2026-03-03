@@ -7,6 +7,8 @@ typedef struct RenderData {
     
     uint32_t width;
     uint32_t height;
+    uint8_t bytes_per_channel;
+    uint8_t num_channels;
     int ret;
 } RenderData;
 

@@ -1,5 +1,8 @@
 #include "include/png.h"
 #include "include/utils.h"
+#include <stdint.h>
+#include <stdio.h>
+#include <SDL3/SDL_render.h>
 
 int main(int argc, char **argv) {
     if (argc != 2) {
@@ -52,64 +55,85 @@ int main(int argc, char **argv) {
                           SDL_WINDOWPOS_CENTERED,
                           SDL_WINDOWPOS_CENTERED
                         );
-    SDL_CreateRenderer(window, NULL);
 
     if (window) {
 
-        SDL_Event event;
         bool isRunning = true;
-
-        SDL_Renderer *renderer = SDL_GetRenderer(window);
-        // App loop
-        while (isRunning) {
-
-            // Event handling
-            while (SDL_PollEvent(&event)) {
-                switch (event.type) {
-                case SDL_EVENT_WINDOW_CLOSE_REQUESTED:
-                    isRunning = false;
-                    break;
-                case SDL_EVENT_KEY_DOWN:
-                    isRunning = !(event.key.scancode == 20);
-                    break;
-                }
-            }
-
-            // FIX: slow ass rendering -> turn into texture
-            SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
-            SDL_RenderClear(renderer);
-
-            // Rendering pipeline
-            for (size_t dy = 0; dy < y; dy++) {
-                for (size_t dx = 0; dx < x; dx++) {
-
-                    uint16_t r = renderData->color[dy * x + dx].r;
-                    uint16_t g = renderData->color[dy * x + dx].g;
-                    uint16_t b = renderData->color[dy * x + dx].b;
-                    uint16_t a = renderData->color[dy * x + dx].a;
-                    // printf("%u %u %u %u", r, g, b, a);
-
-                    // TODO: Texture
-                    // SDL_PixelFormat
-                    // SDL_CreateTexture(renderer, SDL_PixelFormat format, SDL_TextureAccess access, int w, int h)
-                    SDL_SetRenderDrawColor(renderer, r, g, b, 0);
-                    // SDL_SetRenderDrawColor(renderer, 255, 124, 111, 255);
-
-                    SDL_RenderPoint(renderer, dx, dy);
-
-                }
-            }
-            SDL_RenderPresent(renderer);
-
-            // TODO: Explore render destructor and other safety/ semantic
-            // practies defined in docs!!
-            // SDL_free(renderer);
+        SDL_Event event;
+        int pitch = renderData->width * renderData->num_channels * 2;
+        printf("Pitch is: %u\n", pitch);
+        SDL_Renderer *renderer = SDL_CreateRenderer(window, NULL);
+        SDL_Surface *surface = SDL_CreateSurfaceFrom(x, y, SDL_PIXELFORMAT_RGBA32, renderData->color, x * 4);
+        if (surface == NULL) {
+            SDL_Log("CreateRGBSurface failed: %s", SDL_GetError());
+            exit(1);
         }
 
-        free(renderData);
+        SDL_Texture *texture = SDL_CreateTextureFromSurface(renderer, surface);
+
+        if (texture == NULL) {
+            SDL_Log("CreateRGBSurface failed: %s", SDL_GetError());
+            exit(1);
+        }
+
+        SDL_DestroySurface(surface);
+        surface = NULL;
+        // printf("\x1b[38;2;255;100;0mThis is true color text\x1b[0m\n");
+
+
+         while (isRunning) {
+
+             // Event handling
+             while (SDL_PollEvent(&event)) {
+                 switch (event.type) {
+                 case SDL_EVENT_WINDOW_CLOSE_REQUESTED:
+                     isRunning = false;
+                     break;
+                 case SDL_EVENT_KEY_DOWN:
+                     isRunning = !(event.key.scancode == 20);
+                     break;
+                 }
+             }
+
+             // SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+             SDL_RenderClear(renderer);
+             SDL_RenderTexture(renderer, texture, NULL, NULL);
+             SDL_SetRenderVSync(renderer, 1);
+             SDL_RenderPresent(renderer);
+
+
+         }
+
+         free(renderData);
+         SDL_DestroyTexture(texture);
+         SDL_DestroyRenderer(renderer);
+         SDL_Quit();
+        
         return 0;
     }
 
 
     printf("Error opening window.\n");
 }
+
+
+
+
+
+            // // Rendering pipeline
+            // for (size_t dy = 0; dy < y; dy++) {
+            //     for (size_t dx = 0; dx < x; dx++) {
+            //
+            //         uint16_t r = renderData->color[dy * x + dx].r;
+            //         uint16_t g = renderData->color[dy * x + dx].g;
+            //         uint16_t b = renderData->color[dy * x + dx].b;
+            //         uint16_t a = renderData->color[dy * x + dx].a;
+            //         // printf("%u %u %u %u", r, g, b, a);
+            //
+            //         SDL_SetRenderDrawColor(renderer, r, g, b, 0);
+            //
+            //         SDL_RenderPoint(renderer, dx, dy);
+            //
+            //     }
+            // }
+            // SDL_RenderPresent(renderer);
