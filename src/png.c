@@ -166,7 +166,8 @@ int load_png_colors(PNG_Metadata *md, uint16_t alpha_data) {
 
                  int ret;
                  if ((ret = unfilter_png(md->ftype[y], y, unfiltered, scanline_width, stride, md)) != 0) {
-                     return ret; 
+                    free(unfiltered);
+                    return ret; 
                  }
 
                 for (size_t x = 0; x < md->width; x++) {
@@ -182,32 +183,15 @@ int load_png_colors(PNG_Metadata *md, uint16_t alpha_data) {
                     a = 255;
 
                     md->pixel_color[y * md->width + x] = (SDL_Color){r, g, b, a};
-
-
-
-
-
-
-                    // size_t offset = (y * stride) + (x * md->num_channels * md->bytes_per_channel);
-                    //
-                    // r = unfiltered[offset];
-                    // g = unfiltered[offset + 2];
-                    // b = unfiltered[offset + 4];
-                    // // a = alpha_data ? alpha_data : 255;
-                    // a = 255;
-                    //
-                    // md->pixel_color[y * md->width + x] = (SDL_Color){r, g, b, a};
                 }
             }
 
+            free(unfiltered);
             break;
         }
 
         // if (md->color_space == PNG_CS_RGB || md->color_space == CS_RGB_ALPHA) {
         case PNG_CS_RGB: {
-
-            printf("Loading PNG_CS_RGB Colors\n");
-
             for (size_t y = 0; y < md->height; y++) {
 
                 // Extract filter type
@@ -215,21 +199,39 @@ int load_png_colors(PNG_Metadata *md, uint16_t alpha_data) {
 
                 int ret;
                 if ((ret = unfilter_png(md->ftype[y], y, unfiltered, scanline_width, stride, md)) != 0) {
+                    free(unfiltered);
                     return ret; 
                 }
 
                 for (size_t x = 0; x < md->width; x++) {
+                    uint8_t desired_bdepth = 8;
+                    // TODO: Add dynamic quant based on monitor specs
+
+                    uint32_t max_in_sample = ( 1 << md->bit_depth ) - 1;
+                    uint32_t max_out_sample = ( 1 << desired_bdepth ) - 1;
                     size_t offset = (y * stride) + (x * md->num_channels * md->bytes_per_channel);
 
-                    r = unfiltered[offset];
-                    g = unfiltered[offset + 2];
-                    b = unfiltered[offset + 4];
-                    // a = alpha_data ? alpha_data : 255;
-                    a = 255;
+
+                    // quantize to 8 bit
+                    if (md->bytes_per_channel > 1) {
+                        r = ( unfiltered[offset] << 8 ) | unfiltered[offset + 1];
+                        g = ( unfiltered[offset + 2] << 8 ) | unfiltered[offset + 3];
+                        b = ( unfiltered[offset + 4] << 8 ) | unfiltered[offset + 5];
+                        r = r >> 8;
+                        g = g >> 8;
+                        b = b >> 8;
+                    } else {
+                        r = unfiltered[offset];
+                        g = unfiltered[offset + 1];
+                        b = unfiltered[offset + 2];
+                    }
+                    a = alpha_data ? alpha_data : 255;
 
                     md->pixel_color[y * md->width + x] = (SDL_Color){r, g, b, a};
                 }
             }
+
+            free(unfiltered);
             break;
         }
     }
@@ -303,7 +305,7 @@ int __filter_sub(PNG_Metadata *md, uint16_t *unfiltered, const size_t row_idx){
         uint32_t prev = (x >= decrement_sz) ? unfiltered[row_idx * stride + (x - decrement_sz)] 
                                             : 0;
        
-        unfiltered[row_idx * stride + x] = md->image_data[offset] + prev;
+        unfiltered[row_idx * stride + x] = (md->image_data[offset] + prev) & 0xFF;
     }
 
     return 0;
@@ -332,7 +334,7 @@ int __filter_up(PNG_Metadata *md, uint16_t *unfiltered, const size_t row_idx) {
         uint32_t prev = row_idx ? unfiltered[(row_idx - 1) * stride + x] 
                             : 0;
 
-        unfiltered[row_idx * stride + x] = md->image_data[offset] + prev;
+        unfiltered[row_idx * stride + x] = (md->image_data[offset] + prev) & 0xFF;
     }
 
     return 0;
@@ -398,7 +400,7 @@ int __filter_paeth(PNG_Metadata *md, uint16_t *unfiltered, const size_t row_idx)
         else if (__pb <= __pc) { __prev = prev_b; }
         else { __prev = prev_c; }
         
-        unfiltered[row_idx * stride + x] = md->image_data[offset] + __prev;
+        unfiltered[row_idx * stride + x] = ( md->image_data[offset] + __prev ) & 0xFF;
     }
 
     return 0;

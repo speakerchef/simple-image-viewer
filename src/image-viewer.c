@@ -21,14 +21,13 @@ int main(int argc, char **argv) {
     fseek(file, 0, SEEK_SET);
 
     // Get PNG file identifier (first 8 bytes of the file)
-    char identifier[8] = {0};
+    unsigned char identifier[8] = {0};
     fread(identifier, 1, 8, file);
-    unsigned char *byteid = (unsigned char *)identifier;
 
     unsigned char __png_id[8] = {0x89, 0x50, 0x4e, 0x47,
                                  0x0d, 0x0a, 0x1a, 0x0a}; // PNG Spec ID
 
-    bool is_PNG = !(memcmp(byteid, __png_id, 8));
+    bool is_PNG = !(memcmp(identifier, __png_id, 8));
 
     fseek(file, 8, SEEK_SET); // Skip past ID to data chunks
 
@@ -60,6 +59,7 @@ int main(int argc, char **argv) {
         SDL_Event event;
         bool isRunning = true;
 
+        SDL_Renderer *renderer = SDL_GetRenderer(window);
         // App loop
         while (isRunning) {
 
@@ -76,7 +76,6 @@ int main(int argc, char **argv) {
             }
 
             // FIX: slow ass rendering -> turn into texture
-            SDL_Renderer *renderer = SDL_GetRenderer(window);
             SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
             SDL_RenderClear(renderer);
 
@@ -90,6 +89,9 @@ int main(int argc, char **argv) {
                     uint16_t a = renderData->color[dy * x + dx].a;
                     // printf("%u %u %u %u", r, g, b, a);
 
+                    // TODO: Texture
+                    // SDL_PixelFormat
+                    // SDL_CreateTexture(renderer, SDL_PixelFormat format, SDL_TextureAccess access, int w, int h)
                     SDL_SetRenderDrawColor(renderer, r, g, b, 0);
                     // SDL_SetRenderDrawColor(renderer, 255, 124, 111, 255);
 
@@ -101,6 +103,7 @@ int main(int argc, char **argv) {
 
             // TODO: Explore render destructor and other safety/ semantic
             // practies defined in docs!!
+            // SDL_free(renderer);
         }
 
         free(renderData);
