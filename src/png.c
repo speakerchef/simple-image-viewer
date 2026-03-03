@@ -131,6 +131,8 @@ RenderData *decode_png(FILE *file) {
     renderData->color = png_metadata.pixel_color;
     renderData->width = png_metadata.width;
     renderData->height = png_metadata.height;
+    renderData->bytes_per_channel = png_metadata.bytes_per_channel; 
+    renderData->num_channels = png_metadata.num_channels;
     renderData->ret = ret;
 
     free(png_metadata.palette);
