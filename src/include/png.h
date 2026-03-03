@@ -11,10 +11,8 @@
 #include <stdatomic.h>
 #include <stdbool.h>
 #include <stddef.h>
-#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <SDL3/SDL.h>
 #include <string.h>
 #include <unistd.h>
 #include <zlib.h>
@@ -65,14 +63,14 @@ int uncompress_png(unsigned char *input,
                    PNG_Metadata *md);
 int unfilter_png(const unsigned char ftype, 
                  const size_t row_idx, 
-                 unsigned char *unfiltered, 
+                 uint16_t *unfiltered, 
                  const size_t scanline_width, 
                  const size_t stride,
                  PNG_Metadata *md);
 
-int __filter_sub(PNG_Metadata *md, unsigned char *unfiltered, const size_t row_idx);
-int __filter_up(PNG_Metadata *md, unsigned char *unfiltered, const size_t row_idx);
-int __filter_avg(PNG_Metadata *md, unsigned char *unfiltered, const size_t row_idx); 
-int __filter_paeth(PNG_Metadata *md, unsigned char *unfiltered, const size_t row_idx); 
+int __filter_sub(PNG_Metadata *md,  uint16_t *unfiltered, const size_t row_idx);
+int __filter_up(PNG_Metadata *md,   uint16_t *unfiltered, const size_t row_idx);
+int __filter_avg(PNG_Metadata *md,  uint16_t *unfiltered, const size_t row_idx); 
+int __filter_paeth(PNG_Metadata *md,uint16_t *unfiltered, const size_t row_idx); 
 RenderData *decode_png(FILE *file);
 

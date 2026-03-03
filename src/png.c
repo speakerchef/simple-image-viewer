@@ -1,4 +1,7 @@
 #include "include/png.h"
+#include <stddef.h>
+#include <stdint.h>
+#include <stdio.h>
 
 
 RenderData *decode_png(FILE *file) {
@@ -8,7 +11,7 @@ RenderData *decode_png(FILE *file) {
     const uint8_t CRC_SZ = 4;
     while (1) {
         uint32_t chunk_sz = 0;
-        unsigned char *chunk_type = malloc(4);
+        unsigned char chunk_type[4] = {0};
 
         if (!fread(&chunk_sz, 1, 4, file)) break;
         if (!fread(chunk_type, 1, 4, file)) break;
@@ -122,8 +125,6 @@ RenderData *decode_png(FILE *file) {
     png_metadata.alpha_data = 0;
     ret = ret & load_png_colors(&png_metadata, png_metadata.alpha_data);
 
-    load_png_colors(&png_metadata, png_metadata.alpha_data);
-
     printf("LOADED COLORS\n");
     
     RenderData *renderData = malloc(sizeof(RenderData));
@@ -149,25 +150,56 @@ int load_png_colors(PNG_Metadata *md, uint16_t alpha_data) {
 
     md->pixel_color = malloc(sizeof(SDL_Color) * md->width * md->height);
     md->ftype = malloc(sizeof(unsigned char) * md->height);
-    size_t scanline_width = (md->width * md->num_channels * md->bytes_per_channel) + 1;
+    size_t stride = md->width * md->num_channels * md->bytes_per_channel;
+    size_t scanline_width = stride + 1;
     uint16_t r, g, b, a;
+
+    uint16_t *unfiltered = malloc(sizeof(uint16_t) * md->height * stride);
 
     // Handle color loading for all color spaces 
     switch (md->color_space) {
         case PNG_CS_PLTE: {
             for (size_t y = 0; y < md->height; y++) {
-                for (size_t x = 0; x < md->width; x++) {
-                    uint16_t index = md->image_data[y * scanline_width + x + 1];
-                    uint16_t stride = index * 3;
 
-                    r = md->palette[stride];
-                    g = md->palette[stride + 1];
-                    b = md->palette[stride + 2];
+                // Extract filter type
+                md->ftype[y] = md->image_data[y * scanline_width];
+
+                 int ret;
+                 if ((ret = unfilter_png(md->ftype[y], y, unfiltered, scanline_width, stride, md)) != 0) {
+                     return ret; 
+                 }
+
+                for (size_t x = 0; x < md->width; x++) {
+                    // uint16_t index = md->image_data[y * scanline_width + x + 1];
+                    size_t offset = (y * stride) + (x * md->num_channels * md->bytes_per_channel);
+                    uint16_t index = unfiltered[offset];
+                    uint16_t palette_stride = index * 3;
+                    // size_t offset = (y * stride) + (x * md->num_channels * md->bytes_per_channel);
+
+                    r = md->palette[palette_stride];
+                    g = md->palette[palette_stride + 1];
+                    b = md->palette[palette_stride + 2];
                     a = 255;
 
                     md->pixel_color[y * md->width + x] = (SDL_Color){r, g, b, a};
+
+
+
+
+
+
+                    // size_t offset = (y * stride) + (x * md->num_channels * md->bytes_per_channel);
+                    //
+                    // r = unfiltered[offset];
+                    // g = unfiltered[offset + 2];
+                    // b = unfiltered[offset + 4];
+                    // // a = alpha_data ? alpha_data : 255;
+                    // a = 255;
+                    //
+                    // md->pixel_color[y * md->width + x] = (SDL_Color){r, g, b, a};
                 }
             }
+
             break;
         }
 
@@ -176,8 +208,6 @@ int load_png_colors(PNG_Metadata *md, uint16_t alpha_data) {
 
             printf("Loading PNG_CS_RGB Colors\n");
 
-            size_t stride = md->width * md->num_channels * md->bytes_per_channel;
-            unsigned char *unfiltered = malloc(sizeof(unsigned char) * md->height * stride);
             for (size_t y = 0; y < md->height; y++) {
 
                 // Extract filter type
@@ -252,7 +282,7 @@ int uncompress_png(unsigned char *in_buf,
     return 0;
 }
 
-int __filter_sub(PNG_Metadata *md, unsigned char *unfiltered, const size_t row_idx){
+int __filter_sub(PNG_Metadata *md, uint16_t *unfiltered, const size_t row_idx){
     /*
      * To remove the Sub filter, we will add the previous pixel
      * to the current pixel to reconstruct the current pixel.
@@ -279,7 +309,7 @@ int __filter_sub(PNG_Metadata *md, unsigned char *unfiltered, const size_t row_i
     return 0;
 }
 
-int __filter_up(PNG_Metadata *md, unsigned char *unfiltered, const size_t row_idx) {
+int __filter_up(PNG_Metadata *md, uint16_t *unfiltered, const size_t row_idx) {
     /* 
      * To remove the Up filter, we will 
      * add the previous pixel at the previous
@@ -308,7 +338,7 @@ int __filter_up(PNG_Metadata *md, unsigned char *unfiltered, const size_t row_id
     return 0;
 }
 
-int __filter_avg(PNG_Metadata *md, unsigned char *unfiltered, const size_t row_idx) {
+int __filter_avg(PNG_Metadata *md, uint16_t *unfiltered, const size_t row_idx) {
     /*
      * This filter combines both the up and sub filters.
      * We desconstruct by */
@@ -334,7 +364,8 @@ int __filter_avg(PNG_Metadata *md, unsigned char *unfiltered, const size_t row_i
 
     return 0;
 }
-int __filter_paeth(PNG_Metadata *md, unsigned char *unfiltered, const size_t row_idx) {
+
+int __filter_paeth(PNG_Metadata *md, uint16_t *unfiltered, const size_t row_idx) {
 
     if (md->width < 1 || md->height < 1 || md->num_channels < 1){
         fprintf(stderr, "Error: Could not apply filter; Invalid metadata!\n");
@@ -350,14 +381,24 @@ int __filter_paeth(PNG_Metadata *md, unsigned char *unfiltered, const size_t row
          * using paeth predictor as shown at https://www.w3.org/TR/png-3/#paethpredictor-function 
          * */
         size_t offset = row_idx * scanline_width + x + 1;
-        uint32_t prev_a = (x >= decrement_sz) ? unfiltered[row_idx * stride + (x - decrement_sz)] 
-                                            : 0;
-        uint32_t prev_b = row_idx ? unfiltered[(row_idx - 1) * stride + x] 
-                            : 0;
-        uint32_t prev_c = (x >= decrement_sz) ? unfiltered[(row_idx - 1) * stride + (x - decrement_sz)]
-                                            : 0;
+        int32_t prev_a = (x >= decrement_sz) ? unfiltered[row_idx * stride + (x - decrement_sz)] 
+                                             : 0;
+        int32_t prev_b = row_idx ? unfiltered[(row_idx - 1) * stride + x] 
+                                 : 0;
+        int32_t prev_c = (x >= decrement_sz) ? unfiltered[(row_idx - 1) * stride + (x - decrement_sz)]
+                                             : 0;
 
-        unfiltered[row_idx * stride + x] = md->image_data[offset] + ((prev_a + prev_b) >> 1);
+        int32_t __p = abs(prev_a + prev_b - prev_c);
+        int32_t __pa = abs( __p - prev_a );
+        int32_t __pb = abs( __p - prev_b );
+        int32_t __pc = abs( __p - prev_c );
+
+        uint32_t __prev = 0;
+        if (__pa <= __pb && __pa <= __pc) { __prev = prev_a; }
+        else if (__pb <= __pc) { __prev = prev_b; }
+        else { __prev = prev_c; }
+        
+        unfiltered[row_idx * stride + x] = md->image_data[offset] + __prev;
     }
 
     return 0;
@@ -365,15 +406,16 @@ int __filter_paeth(PNG_Metadata *md, unsigned char *unfiltered, const size_t row
 
 int unfilter_png(const unsigned char ftype, 
                  const size_t row_idx, 
-                 unsigned char *unfiltered, 
+                 uint16_t *unfiltered, 
                  const size_t scanline_width,
                  const size_t stride,
                  PNG_Metadata *md) {
     
     switch (ftype) {
         case PNG_FILTER_NONE: { 
-            size_t offset = row_idx * scanline_width + 1;
-            memcpy(unfiltered + row_idx * stride, md->image_data + offset, stride);
+            for (size_t x = 0; x < stride; x++) {
+                unfiltered[row_idx * stride + x] = md->image_data[row_idx * scanline_width + x + 1];
+            }
             break;
         };
         case PNG_FILTER_SUB: {

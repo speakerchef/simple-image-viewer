@@ -90,7 +90,7 @@ int main(int argc, char **argv) {
                     uint16_t a = renderData->color[dy * x + dx].a;
                     // printf("%u %u %u %u", r, g, b, a);
 
-                    SDL_SetRenderDrawColor(renderer, r, g, b, a);
+                    SDL_SetRenderDrawColor(renderer, r, g, b, 0);
                     // SDL_SetRenderDrawColor(renderer, 255, 124, 111, 255);
 
                     SDL_RenderPoint(renderer, dx, dy);
