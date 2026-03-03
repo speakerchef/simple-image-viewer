@@ -28,26 +28,26 @@
 #define PNG_FILTER_PAETH 4
 
 typedef struct PNG_Metadata {
-    uint64_t width;
-    uint64_t height;
-    uint64_t bytes_per_channel;
-    uint64_t alpha_data;
+    unsigned char *ftype; // Only this is used to determine filter method
+    unsigned char *image_data;
+    unsigned char *palette;
+    SDL_Color *pixel_color;
+    size_t total_size;
+    uint32_t width;
+    uint32_t height;
+    uint16_t alpha_data;
+    uint8_t bytes_per_channel;
+    uint8_t pixel_size;
+    uint8_t num_channels;
     unsigned char bit_depth;
     unsigned char color_space;
     unsigned char compress_method;
     unsigned char filter_method; // Useless
-    unsigned char *ftype; // Only this is used to determine filter method
     unsigned char interlacing;
-    uint64_t pixel_size;
-    uint64_t num_channels;
-    unsigned char *image_data;
-    SDL_Color *pixel_color;
-    unsigned char *palette;
-    size_t total_size;
 } PNG_Metadata;
 
 // Fwd decs
-int load_png_colors(PNG_Metadata *md, uint32_t alpha_data);
+int load_png_colors(PNG_Metadata *md, uint16_t alpha_data);
 int uncompress_png(unsigned char *input, 
                    unsigned char *output, 
                    const size_t in_buf_size, 
@@ -65,25 +65,25 @@ int __filter_up(PNG_Metadata *md, unsigned char *unfiltered, const size_t row_id
 int __filter_avg(PNG_Metadata *md, unsigned char *unfiltered, const size_t row_idx); 
 int __filter_paeth(PNG_Metadata *md, unsigned char *unfiltered, const size_t row_idx); 
 
-int load_png_colors(PNG_Metadata *md, uint32_t alpha_data) {
+int load_png_colors(PNG_Metadata *md, uint16_t alpha_data) {
 
     if (md->width < 1 || md->height < 1 || md->num_channels < 1){
-        fprintf(stderr, "Error: Could not apply filter; Invalid metadata!\n");
+        fprintf(stderr, "Error: Could not not load colors; Invalid metadata!\n");
         return 1;
     }
 
     md->pixel_color = malloc(sizeof(SDL_Color) * md->width * md->height);
     md->ftype = malloc(sizeof(unsigned char) * md->height);
     size_t scanline_width = (md->width * md->num_channels * md->bytes_per_channel) + 1;
-    uint32_t r, g, b, a;
+    uint16_t r, g, b, a;
 
     // Handle color loading for all color spaces 
     switch (md->color_space) {
         case PNG_CS_PLTE: {
             for (size_t y = 0; y < md->height; y++) {
                 for (size_t x = 0; x < md->width; x++) {
-                    uint32_t index = md->image_data[y * scanline_width + x + 1];
-                    uint32_t stride = index * 3;
+                    uint16_t index = md->image_data[y * scanline_width + x + 1];
+                    uint16_t stride = index * 3;
 
                     r = md->palette[stride];
                     g = md->palette[stride + 1];
@@ -152,7 +152,6 @@ int uncompress_png(unsigned char *in_buf,
         return ret;
     }
 
-    // Note: no filtering pipeline yet
     stream.avail_in = in_buf_size;
     stream.avail_out = out_buf_size;
     stream.next_in = in_buf;
@@ -211,7 +210,7 @@ int __filter_up(PNG_Metadata *md, unsigned char *unfiltered, const size_t row_id
      * add the previous pixel at the previous
      * row to the current pixel to reconstruct the 
      * current pixel. It is always the case 
-     * that the prev pixel of first pixel 
+     * that the prev pixel of the first pixel 
      * in every scanline is 0.
      */
     if (md->width < 1 || md->height < 1 || md->num_channels < 1){
@@ -235,7 +234,9 @@ int __filter_up(PNG_Metadata *md, unsigned char *unfiltered, const size_t row_id
 }
 
 int __filter_avg(PNG_Metadata *md, unsigned char *unfiltered, const size_t row_idx) {
-
+    /*
+     * This filter combines both the up and sub filters.
+     * We desconstruct by */
     if (md->width < 1 || md->height < 1 || md->num_channels < 1){
         fprintf(stderr, "Error: Could not apply filter; Invalid metadata!\n");
         return 1;
@@ -325,7 +326,7 @@ int main(int argc, char **argv) {
     if (argc != 2) {
         printf("Error: Invalid arguments; expected file-path 'path/to/image'\n");
 
-        return 0;
+        return 1;
     }
     const char *path = argv[1];
     FILE *file = fopen(path, "rb");
@@ -347,40 +348,32 @@ int main(int argc, char **argv) {
 
     unsigned char __png_id[8] = {0x89, 0x50, 0x4e, 0x47,
                                  0x0d, 0x0a, 0x1a, 0x0a}; // PNG Spec ID
+
     bool is_PNG = !(memcmp(byteid, __png_id, 8));
-    printf("IS PNG?: %d\n", is_PNG);
 
     fseek(file, 8, SEEK_SET); // Skip past ID to data chunks
 
-    static PNG_Metadata png_metadata;
+    static PNG_Metadata png_metadata = {0};
 
     if (is_PNG) {
 
-        png_metadata.image_data = NULL;
-        png_metadata.palette = NULL;
-        png_metadata.total_size = 0;
-
         // Process chunks
+        const uint8_t CRC_SZ = 4;
         while (1) {
-            unsigned long chunk_sz = 0;
-            char chunk_type[4];
+            uint32_t chunk_sz = 0;
+            unsigned char *chunk_type = malloc(4);
 
             if (!fread(&chunk_sz, 1, 4, file)) break;
             if (!fread(chunk_type, 1, 4, file)) break;
 
             chunk_sz = ntohl(chunk_sz); // Big to little endian
-            printf("Size of chunk is: %ld, ", chunk_sz);
-
-            printf("Chunk type is: ");
-            for (size_t i = 0; i < 4; i++) {
-                printf("%c", chunk_type[i]);
-            }
-            printf("\n");
+            printf("Size of chunk is: %u, ", chunk_sz);
+            printf("Chunk type is: %s\n", chunk_type);
 
             // Extract image size
             if (!memcmp(chunk_type, "IHDR", 4)) {
                 /*
-                 *header is 13 bytes long, stored in big endian
+                 *header is 13 bytes long, h,w stored in big endian
                  *00 00 00 00 | 00 00 00 00 | 00 | 00 | 00 | 00 | 00
                  *     w             h        BD   CS   CM   FM   IL
                  * */
@@ -420,21 +413,25 @@ int main(int argc, char **argv) {
                     }
                 }
 
-                printf("w:%llu h:%llu bd:%u cs:%u cm:%u fm:%u intl:%u n_ch:%llu\n",
+                printf("w:%hu h:%hu bd:%u cs:%u cm:%u fm:%u il:%u n_ch:%u\n",
                        png_metadata.width, png_metadata.height,
                        png_metadata.bit_depth, png_metadata.color_space,
                        png_metadata.compress_method, png_metadata.filter_method,
                        png_metadata.interlacing, png_metadata.num_channels);
 
-                fseek(file, -chunk_sz, SEEK_CUR);
+                fseek(file, CRC_SZ, SEEK_CUR);
+                continue;
             }
 
             // Extract color palette information if available
             if (!memcmp(chunk_type, "PLTE", 4)) {
+                if (chunk_sz % 3 != 0) { fprintf(stderr, "Error: Invalid PLTE chunk.\n"); }
+
                 png_metadata.palette = malloc(chunk_sz);
                 fread(png_metadata.palette, 1, chunk_sz, file);
 
-                fseek(file, -chunk_sz, SEEK_CUR);
+                fseek(file, CRC_SZ, SEEK_CUR);
+                continue;
             }
 
             // Extract image data and append sequential IDAT chunks
@@ -453,7 +450,8 @@ int main(int argc, char **argv) {
 
                 png_metadata.total_size += chunk_sz;
 
-                fseek(file, -chunk_sz, SEEK_CUR);
+                fseek(file, CRC_SZ, SEEK_CUR);
+                continue;
             }
 
             // End of file
@@ -461,7 +459,7 @@ int main(int argc, char **argv) {
                 break;
             }
 
-            fseek(file, chunk_sz + 4, SEEK_CUR);
+            fseek(file, chunk_sz + CRC_SZ, SEEK_CUR);
         }
 
         size_t scanline_size = (png_metadata.width * png_metadata.num_channels * png_metadata.bit_depth + 7) / 8;
@@ -523,10 +521,10 @@ int main(int argc, char **argv) {
             for (size_t dy = 0; dy < y; dy++) {
                 for (size_t dx = 0; dx < x; dx++) {
 
-                    uint8_t r = png_metadata.pixel_color[dy * png_metadata.width + dx].r;
-                    uint8_t g = png_metadata.pixel_color[dy * png_metadata.width + dx].g;
-                    uint8_t b = png_metadata.pixel_color[dy * png_metadata.width + dx].b;
-                    uint8_t a = png_metadata.pixel_color[dy * png_metadata.width + dx].a;
+                    uint16_t r = png_metadata.pixel_color[dy * png_metadata.width + dx].r;
+                    uint16_t g = png_metadata.pixel_color[dy * png_metadata.width + dx].g;
+                    uint16_t b = png_metadata.pixel_color[dy * png_metadata.width + dx].b;
+                    uint16_t a = png_metadata.pixel_color[dy * png_metadata.width + dx].a;
                     // printf("%u %u %u %u", r, g, b, a);
 
                     SDL_SetRenderDrawColor(renderer, r, g, b, a);
