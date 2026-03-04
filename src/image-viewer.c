@@ -34,7 +34,7 @@ int main(int argc, char **argv) {
 
     fseek(file, 8, SEEK_SET); // Skip past ID to data chunks
 
-    RenderData *renderData = NULL; 
+    RenderData *renderData = NULL;
 
     if (is_PNG) { renderData = decode_png(file); }
 
@@ -51,7 +51,7 @@ int main(int argc, char **argv) {
     uint32_t y = renderData->height;
 
     SDL_Window *window = SDL_CreateWindow("Image Viewer", x, y, 0);
-    SDL_SetWindowPosition(window, 
+    SDL_SetWindowPosition(window,
                           SDL_WINDOWPOS_CENTERED,
                           SDL_WINDOWPOS_CENTERED
                         );
@@ -109,7 +109,7 @@ int main(int argc, char **argv) {
          SDL_DestroyTexture(texture);
          SDL_DestroyRenderer(renderer);
          SDL_Quit();
-        
+
         return 0;
     }
 
