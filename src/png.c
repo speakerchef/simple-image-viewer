@@ -195,6 +195,8 @@ int load_png_colors(PNG_Metadata *md, uint16_t alpha_data) {
         }
 
         // if (md->color_space == PNG_CS_RGB || md->color_space == CS_RGB_ALPHA) {
+        // TODO: Add support for grayscale color spaces
+        // TODO: add support to alpha color spaces
         case PNG_CS_RGB: {
             for (size_t y = 0; y < md->height; y++) {
 
