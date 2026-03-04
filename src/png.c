@@ -1,7 +1,9 @@
 #include "include/png.h"
 #include <stddef.h>
+#include <math.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <float.h>
 
 
 RenderData *decode_png(FILE *file) {
@@ -363,7 +365,7 @@ int __filter_avg(PNG_Metadata *md, uint16_t *unfiltered, const size_t row_idx) {
         uint32_t prev_b = row_idx ? unfiltered[(row_idx - 1) * stride + x] 
                             : 0;
 
-        unfiltered[row_idx * stride + x] = md->image_data[offset] + ((prev_a + prev_b) >> 1);
+        unfiltered[row_idx * stride + x] = md->image_data[offset] + (uint16_t)(floor((float)(prev_a + prev_b) / 2)) & 0xFF;
     }
 
     return 0;
@@ -392,7 +394,7 @@ int __filter_paeth(PNG_Metadata *md, uint16_t *unfiltered, const size_t row_idx)
         int32_t prev_c = (x >= decrement_sz) ? unfiltered[(row_idx - 1) * stride + (x - decrement_sz)]
                                              : 0;
 
-        int32_t __p = abs(prev_a + prev_b - prev_c);
+        int32_t __p = prev_a + prev_b - prev_c;
         int32_t __pa = abs( __p - prev_a );
         int32_t __pb = abs( __p - prev_b );
         int32_t __pc = abs( __p - prev_c );
@@ -431,6 +433,7 @@ int unfilter_png(const unsigned char ftype,
             break;
         }
         case PNG_FILTER_AVG: {
+            // printf("average path taken\n");
             __filter_avg(md, unfiltered, row_idx);
             break;
         }
