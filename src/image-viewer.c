@@ -79,6 +79,7 @@ int main(int argc, char **argv) {
         SDL_DestroySurface(surface);
         surface = NULL;
         // printf("\x1b[38;2;255;100;0mThis is true color text\x1b[0m\n");
+        // TODO: Add custom terminal based rendering
 
 
          while (isRunning) {
