@@ -39,10 +39,15 @@ int main(int argc, char **argv) {
 
     if (is_PNG) { renderData = decode_png(file); }
 
+    if (!renderData) {
+        fprintf(stderr, ERR_BAD_FILE);
+        return 1;
+    }
+
     fclose(file);
 
     if (!renderData->color || !renderData->height || !renderData->width) {
-        fprintf(stderr, "Error: Could not open image; File data corrupt or invalid.\n");
+        fprintf(stderr, ERR_BAD_FILE);
         return 1;
     }
 
