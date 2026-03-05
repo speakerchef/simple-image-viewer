@@ -27,17 +27,19 @@ RenderData *decode_png(FILE *file) {
         // Extract image size
         if (!memcmp(chunk_type, "IHDR", 4)) {
             /*
-             *header is 13 bytes long, h,w stored in big endian
-             *00 00 00 00 | 00 00 00 00 | 00 | 00 | 00 | 00 | 00
-             *     w             h        BD   CS   CM   FM   IL
+             * Read in metadata, note h,w,
              * */
-            fread(&png_metadata.width, 1, 4, file);
-            fread(&png_metadata.height, 1, 4, file);
-            fread(&png_metadata.bit_depth, 1, 1, file);
-            fread(&png_metadata.color_space, 1, 1, file);
-            fread(&png_metadata.compress_method, 1, 1, file);
-            fread(&png_metadata.filter_method, 1, 1, file);
-            fread(&png_metadata.interlacing, 1, 1, file);
+            
+            size_t ret = 0;
+            ret += fread(&png_metadata.width, 1, 4, file);
+            ret += fread(&png_metadata.height, 1, 4, file);
+            ret += fread(&png_metadata.bit_depth, 1, 1, file);
+            ret += fread(&png_metadata.color_space, 1, 1, file);
+            ret += fread(&png_metadata.compress_method, 1, 1, file);
+            ret += fread(&png_metadata.filter_method, 1, 1, file);
+            ret += fread(&png_metadata.interlacing, 1, 1, file);
+
+            if (ret != 13) { return NULL; }
 
             png_metadata.width = ntohl(png_metadata.width);
             png_metadata.height = ntohl(png_metadata.height);
@@ -83,11 +85,15 @@ RenderData *decode_png(FILE *file) {
                 fprintf(stderr, "Error: Invalid PLTE chunk.\n");
             }
 
-            png_metadata.palette = malloc(chunk_sz);
+            png_metadata.palette = calloc(1, chunk_sz);
             fread(png_metadata.palette, 1, chunk_sz, file);
 
             fseek(file, CRC_SZ, SEEK_CUR);
             continue;
+        }
+
+        if (!memcmp(chunk_type, "bKGD", 4)) {
+
         }
 
         // Extract image data and append sequential IDAT chunks
@@ -119,7 +125,7 @@ RenderData *decode_png(FILE *file) {
                            8;
     size_t output_size = png_metadata.height *
                          (scanline_size + 1); // +1 to account for filter byte
-    unsigned char *output_buffer = malloc(sizeof(unsigned char) * output_size);
+    unsigned char *output_buffer = calloc(output_size, sizeof(unsigned char));
 
     int ret =
         uncompress_png(png_metadata.image_data, output_buffer,
@@ -130,7 +136,7 @@ RenderData *decode_png(FILE *file) {
 
     printf("LOADED COLORS\n");
 
-    RenderData *renderData = malloc(sizeof(RenderData));
+    RenderData *renderData = calloc(1, sizeof(RenderData));
     renderData->color = png_metadata.pixel_color;
     renderData->width = png_metadata.width;
     renderData->height = png_metadata.height;
@@ -201,17 +207,18 @@ int load_png_colors(PNG_Metadata *md, uint16_t alpha_data) {
         return 1;
     }
 
-    md->pixel_color = malloc(sizeof(ColorData) * md->width * md->height);
+    md->pixel_color = calloc(md->width * md->height, sizeof(ColorData));
     size_t stride = md->width * md->num_channels * md->bytes_per_channel;
     size_t scanline_width = stride + 1;
     uint16_t r, g, b, a;
 
-    uint16_t *unfiltered = malloc(sizeof(uint16_t) * md->height * stride);
+    uint16_t *unfiltered = calloc(md->height * stride, sizeof(uint16_t));
 
     // Handle color loading for all color spaces
     switch (md->color_space) {
         // DONE: Add support for grayscale color spaces
         // DONE: Refactor color stripping into function
+        // 
         // TODO: Support 1, 2, 4 bit depth color spaces
         // TODO: add support to alpha color spaces
         // -    need to handle tRNS chunk
@@ -343,10 +350,10 @@ int __filter_sub(PNG_Metadata *md, uint16_t *unfiltered, const size_t row_idx) {
 
 int __filter_up(PNG_Metadata *md, uint16_t *unfiltered, const size_t row_idx) {
     /*
-     * To remove the Up filter, we will
+     * to remove the up filter, we will
      * add the previous pixel at the previous
      * row to the current pixel to reconstruct the
-     * current pixel. It is always the case
+     * current pixel. it is always the case
      * that the prev pixel of the first pixel
      * in every scanline is 0.
      */

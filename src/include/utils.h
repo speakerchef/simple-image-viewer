@@ -2,6 +2,8 @@
 #include <stdint.h>
 #include <SDL3/SDL.h>
 
+#define ERR_BAD_FILE "Error: Could not open image; File data corrupt or invalid.\n" 
+
 typedef struct ColorData {
     uint16_t r;
     uint16_t g;
