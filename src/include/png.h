@@ -34,18 +34,21 @@
 #define PNG_FILTER_AVG 3
 #define PNG_FILTER_PAETH 4
 
+
+typedef struct ColorData ColorData;
+
 typedef struct PNG_Metadata {
-    unsigned char *ftype; // Only this is used to determine filter method
     unsigned char *image_data;
     unsigned char *palette;
-    SDL_Color *pixel_color;
+    // SDL_Color *pixel_color;
+    ColorData *pixel_color;
     size_t total_size;
     uint32_t width;
     uint32_t height;
     uint16_t alpha_data;
-    uint8_t bytes_per_channel;
-    uint8_t pixel_size;
-    uint8_t num_channels;
+    uint16_t bytes_per_channel;
+    uint16_t pixel_size;
+    uint16_t num_channels;
     unsigned char bit_depth;
     unsigned char color_space;
     unsigned char compress_method;
@@ -55,6 +58,7 @@ typedef struct PNG_Metadata {
 
 
 // Fwd decs
+void _set_color(uint16_t *unfiltered, const size_t stride, PNG_Metadata *md, const size_t y, bool is_gray, bool is_plt);
 int load_png_colors(PNG_Metadata *md, uint16_t alpha_data);
 int uncompress_png(unsigned char *input, 
                    unsigned char *output, 

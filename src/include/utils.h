@@ -2,8 +2,15 @@
 #include <stdint.h>
 #include <SDL3/SDL.h>
 
+typedef struct ColorData {
+    uint16_t r;
+    uint16_t g;
+    uint16_t b;
+    uint16_t a;
+} ColorData;
+
 typedef struct RenderData {
-    SDL_Color *color;
+    ColorData *color;
     
     uint32_t width;
     uint32_t height;

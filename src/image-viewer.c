@@ -1,5 +1,6 @@
 #include "include/png.h"
 #include "include/utils.h"
+#include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <SDL3/SDL_render.h>
@@ -60,17 +61,16 @@ int main(int argc, char **argv) {
 
         bool isRunning = true;
         SDL_Event event;
-        int pitch = renderData->width * renderData->num_channels * 2;
-        printf("Pitch is: %u\n", pitch);
+        int pixel_format = SDL_PIXELFORMAT_RGBA64;
+        int pitch = x * 8;
+
         SDL_Renderer *renderer = SDL_CreateRenderer(window, NULL);
-        SDL_Surface *surface = SDL_CreateSurfaceFrom(x, y, SDL_PIXELFORMAT_RGBA32, renderData->color, x * 4);
+        SDL_Surface *surface = SDL_CreateSurfaceFrom(x, y, pixel_format, renderData->color, pitch);
         if (surface == NULL) {
             SDL_Log("CreateRGBSurface failed: %s", SDL_GetError());
             exit(1);
         }
-
         SDL_Texture *texture = SDL_CreateTextureFromSurface(renderer, surface);
-
         if (texture == NULL) {
             SDL_Log("CreateRGBSurface failed: %s", SDL_GetError());
             exit(1);
