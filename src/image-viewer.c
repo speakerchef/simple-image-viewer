@@ -129,24 +129,3 @@ int main(int argc, char **argv) {
     printf("Error opening window.\n");
 }
 
-
-
-
-
-            // // Rendering pipeline
-            // for (size_t dy = 0; dy < y; dy++) {
-            //     for (size_t dx = 0; dx < x; dx++) {
-            //
-            //         uint16_t r = renderData->color[dy * x + dx].r;
-            //         uint16_t g = renderData->color[dy * x + dx].g;
-            //         uint16_t b = renderData->color[dy * x + dx].b;
-            //         uint16_t a = renderData->color[dy * x + dx].a;
-            //         // printf("%u %u %u %u", r, g, b, a);
-            //
-            //         SDL_SetRenderDrawColor(renderer, r, g, b, 0);
-            //
-            //         SDL_RenderPoint(renderer, dx, dy);
-            //
-            //     }
-            // }
-            // SDL_RenderPresent(renderer);

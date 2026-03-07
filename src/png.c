@@ -9,15 +9,8 @@
 #include <stdlib.h>
 #include <string.h>
 
-// DONE: Add support for grayscale color spaces
-// DONE: Refactor color stripping into function
-// DONE:(2/2) add support to alpha color spaces
-// -   DONE: handle in-sequence alpha
-// -   DONE: handle tRNS chunk
-// DONE: (2/2) Background bKGD chunk handling
-    // DONE: Handle pure bKGD chunk 
-    // DONE: Handle combined tRNS and bKGD chunks
 // TODO: Handle cICP chunks
+//  - TODO: Implement Perceptual quantization (PQ) transfer function
 // TODO: Error handling
 // TODO: Adam7 interlacing
 // TODO: Support 1, 2, 4 bit depth color spaces
@@ -41,7 +34,6 @@ RenderData *decode_png(FILE *file) {
 
         chunk_sz = ntohl(chunk_sz); // Big to little endian
         printf("Size of chunk is: %u, ", chunk_sz);
-        // printf("Chunk type is: %s\n", chunk_type);
 
         printf("Chunk type is: ");
         for (int i = 0; i < 4; i++) {
@@ -106,6 +98,20 @@ RenderData *decode_png(FILE *file) {
             continue;
         }
 
+        if (!memcmp(chunk_type, "cICP", 4)) {
+            unsigned char cicp_dat[chunk_sz]; 
+            fread(cicp_dat, sizeof(char), chunk_sz, file);
+
+            for (size_t i = 0; i < chunk_sz; i++) {
+                printf("%u ", cicp_dat[i]); 
+            }
+            printf("\n");
+
+
+            fseek(file, CRC_SZ, SEEK_CUR);
+            continue;
+        }
+
         // Extract color palette information if available
         if (!memcmp(chunk_type, "PLTE", 4)) {
             if (chunk_sz % 3 != 0) {
@@ -121,16 +127,10 @@ RenderData *decode_png(FILE *file) {
 
         if (!memcmp(chunk_type, "tRNS", 4)) {
             uint8_t span = PNG_CS_PLTE ? 1 : 2; // PLTE tRNS chunk has 1 bytes sequences 
-            png_metadata.transparency = calloc(chunk_sz, span);
+            png_metadata.transparency = calloc(1, chunk_sz);
 
-            fread(png_metadata.transparency, span, chunk_sz, file);
-            
+            fread(png_metadata.transparency, sizeof(char), chunk_sz, file);
             png_metadata.trns_sz = chunk_sz;
-
-            for (size_t i = 0; i < chunk_sz*span; i++) {
-                printf("%02x ", png_metadata.transparency[i]);
-            }
-            printf("\n");
 
             fseek(file, CRC_SZ, SEEK_CUR);
             continue;
@@ -138,18 +138,17 @@ RenderData *decode_png(FILE *file) {
 
         // Get and set background colors if defined
         if (!memcmp(chunk_type, "bKGD", 4)) {
-            size_t span = 0;
             if (png_metadata.color_space == PNG_CS_GRAY || png_metadata.color_space == PNG_CS_GRAY_ALPHA) {
-                unsigned char bkgd_dat[2];
-                fread(bkgd_dat, 2, 1, file);
+                unsigned char bkgd_dat[chunk_sz];
+                fread(bkgd_dat, sizeof(char), chunk_sz, file);
                 png_metadata.set_bg = 1;
 
                 png_metadata.bg_color.r = ( bkgd_dat[0] << 8 ) | bkgd_dat[1];
                 png_metadata.bg_color.a = UINT16_MAX;
 
             } else if (png_metadata.color_space == PNG_CS_RGB || png_metadata.color_space == PNG_CS_RGB_ALPHA) {
-                unsigned char bkgd_dat[6];
-                fread(bkgd_dat, 6, 1, file);
+                unsigned char bkgd_dat[chunk_sz];
+                fread(bkgd_dat, sizeof(char), chunk_sz, file);
                 png_metadata.set_bg = 1;
 
                 png_metadata.bg_color.r = ( bkgd_dat[0] << 8 ) | bkgd_dat[1];
@@ -159,7 +158,7 @@ RenderData *decode_png(FILE *file) {
 
             } else {
                 unsigned char bkgd_dat;
-                fread(&bkgd_dat, sizeof(char), 1, file);
+                fread(&bkgd_dat, sizeof(char), chunk_sz, file);
                 png_metadata.bg_color.r = png_metadata.palette[bkgd_dat];
                 png_metadata.bg_color.g = png_metadata.palette[bkgd_dat + 1];
                 png_metadata.bg_color.b = png_metadata.palette[bkgd_dat + 2];
@@ -172,9 +171,7 @@ RenderData *decode_png(FILE *file) {
             continue;
         }
 
-        // Extract image data and append sequential IDAT chunks
-        if (!memcmp(chunk_type, "IDAT", 4)) {
-
+        // Extract image data and append sequential IDAT chunks if (!memcmp(chunk_type, "IDAT", 4)) {
             png_metadata.image_data = realloc(
                 png_metadata.image_data, png_metadata.total_size + chunk_sz);
 
@@ -224,7 +221,6 @@ RenderData *decode_png(FILE *file) {
 
     free(png_metadata.palette);
     free(png_metadata.image_data);
-    // free(png_metadata.ftype);
 
     return renderData;
 }
@@ -256,6 +252,10 @@ void _set_color(uint16_t *unfiltered,
             b = (unfiltered[offset + 4] << desired_bdepth) | unfiltered[offset + 5];
             a = is_alpha ? (unfiltered[offset + 6] << desired_bdepth) | unfiltered[offset + 7]
                          : UINT16_MAX;
+
+            // printf("R BEFORE: %u ", r);
+            // _prc_pq_transfer_func(&r);
+            // printf("R AFTER: %u \n", r);
 
             if (is_quant) {
                 r = r >> desired_bdepth;
@@ -292,11 +292,42 @@ void _set_color(uint16_t *unfiltered,
     }
 }
 
+void _prc_pq_transfer_func(uint16_t *E_pr) {
+    /*
+     * Non-linear to linear space
+     * As defined in Rec. ITU-R BT.2100-3
+     * */
+    const double input = (double)*E_pr / UINT16_MAX;
+    const double m2_const = (1 / _M2);
+    const double m1_const = (1 / _M1);
+
+    //BOOM
+    double _max = MAX( (pow(input, m2_const) - _C1), 0 );
+    double _dc3 =  _C3 * pow(input, m2_const);
+    double _b = fabs(_max / ( _C2 - _dc3 ));
+    double luminance = pow(_b, m1_const);
+    
+    const double matrix[3][3] = {
+        { 3.2404542, -1.5371385, -0.4985314 },
+        { -0.9692660,  1.8760108,  0.0415560 },
+        { 0.0556434, -0.2040259,  1.0572252 }
+    };
+
+    double chrom_r[2] = {0.708, 0.292};
+    double chrom_g[2] = {0.170, 0.797};
+    double chrom_b[2] = {0.131, 0.046};
+    double ref_wht[2] = {0.3127, 0.3290};
+    // printf("Y: %lf\n", y);
+
+    // uint16_t res = y * UINT16_MAX;
+    // printf("RES: %u\n", res);
+    // *E_pr = (uint16_t)floor(10000 * y);
+}
+
 int load_png_colors(PNG_Metadata *md, uint16_t alpha_data) {
 
     if (md->width < 1 || md->height < 1 || md->num_channels < 1) {
-        fprintf(stderr,
-                "Error: Could not not load colors; Invalid metadata!\n");
+        fprintf(stderr, "Error: Could not not load colors; Invalid metadata!\n");
         return 1;
     }
 
@@ -348,15 +379,6 @@ int load_png_colors(PNG_Metadata *md, uint16_t alpha_data) {
 
                 _set_color(unfiltered, stride, md, y, is_gray, is_plt, is_alpha);
             }
-
-            // if (md->transparency) {
-            //     size_t i = 0;
-            //     for (;i < md->_trns_sz; i++) {
-            //         md->pixel_color[i].a = md->transparency[i];
-            //     }
-            //     size_t _trns_offset = ( (md->height * md->width) - md->_trns_sz );
-            // }
-
 
             free(unfiltered);
             break;
@@ -498,28 +520,25 @@ int __filter_up(PNG_Metadata *md, uint16_t *unfiltered, const size_t row_idx) {
 int __filter_avg(PNG_Metadata *md, uint16_t *unfiltered, const size_t row_idx) {
     /*
      * This filter combines both the up and sub filters.
-     * We desconstruct by */
+     * We desconstruct by combining the effects of both*/
     if (md->width < 1 || md->height < 1 || md->num_channels < 1) {
         fprintf(stderr, "Error: Could not apply filter; Invalid metadata!\n");
         return 1;
     }
 
-    size_t scanline_width =
-        md->width * md->num_channels * md->bytes_per_channel + 1;
+    size_t scanline_width = md->width * md->num_channels * md->bytes_per_channel + 1;
     size_t stride = md->width * md->num_channels * md->bytes_per_channel;
     size_t decrement_sz = md->num_channels * md->bytes_per_channel;
 
     for (size_t x = 0; x < stride; x++) {
 
         size_t offset = row_idx * scanline_width + x + 1;
-        uint32_t prev_a =
-            (x >= decrement_sz)
+        uint32_t prev_a = (x >= decrement_sz)
                 ? unfiltered[row_idx * stride + (x - decrement_sz)]
                 : 0;
         uint32_t prev_b = row_idx ? unfiltered[(row_idx - 1) * stride + x] : 0;
 
-        unfiltered[row_idx * stride + x] =
-            md->image_data[offset] +
+        unfiltered[row_idx * stride + x] = md->image_data[offset] +
                 (uint16_t)(floor((float)(prev_a + prev_b) / 2)) &
             0xFF;
     }
@@ -583,8 +602,7 @@ int unfilter_png(const unsigned char ftype, const size_t row_idx,
     switch (ftype) {
         case PNG_FILTER_NONE: {
             for (size_t x = 0; x < stride; x++) {
-                unfiltered[row_idx * stride + x] =
-                    md->image_data[row_idx * scanline_width + x + 1];
+                unfiltered[row_idx * stride + x] = md->image_data[row_idx * scanline_width + x + 1];
             }
             break;
         };
@@ -597,7 +615,6 @@ int unfilter_png(const unsigned char ftype, const size_t row_idx,
             break;
         }
         case PNG_FILTER_AVG: {
-            // printf("average path taken\n");
             __filter_avg(md, unfiltered, row_idx);
             break;
         }

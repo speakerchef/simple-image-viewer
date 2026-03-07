@@ -62,6 +62,7 @@ typedef struct PNG_Metadata {
 
 // Fwd decs
 void _set_color(uint16_t *unfiltered, const size_t stride, PNG_Metadata *md, const size_t y, bool is_gray, bool is_plt, bool is_alpha);
+void _prc_pq_transfer_func(uint16_t *E_pr);
 int load_png_colors(PNG_Metadata *md, uint16_t alpha_data);
 int uncompress_png(unsigned char *input, 
                    unsigned char *output, 
