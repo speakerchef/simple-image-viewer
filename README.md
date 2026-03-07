@@ -2,8 +2,11 @@
 
 A lightweight image viewer built from scratch in C using SDL3 for rendering. The project focuses on parsing and displaying image formats without relying on external image decoding libraries.
 
+**Full PNG spec can be found here: https://www.w3.org/TR/png-3/
+
 ## Supported Formats
-- PNG(In-Progress): Can view PLTE and RGB color space Images with Up and Sub filtering - implementing RGBA/GR/GRA color spaces.
+- PNG(In-Progress: 75%): I implement *most of the important elements in the full PNG spec; certain niche and obscure ancilliary chunks will not be implemented for obvious reasons.
+  - Can view PLTE, RGBA, and Grayscale Images with full transparency and background color support. Interlacing, sub-8 bitdepth, dynamic color quantization still yet to be implemented.
 - (maybe)JPG
 - (maybe)BMP
 ## PNG Implementation
