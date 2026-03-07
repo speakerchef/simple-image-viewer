@@ -1,10 +1,24 @@
 #include "include/png.h"
 #include "include/utils.h"
 #include <float.h>
+#include <limits.h>
 #include <math.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
+
+    // DONE: Add support for grayscale color spaces
+    // DONE: Refactor color stripping into function
+    //
+    // TODO:(1/2) **add support to alpha color spaces
+    // -   DONE: need to handle in-sequence alpha
+    // -    need to handle tRNS chunk
+    // TODO: Background bKGD chunk handling
+    // TODO: Error handling
+    // TODO: Adam7 interlacing
+    // TODO: Support 1, 2, 4 bit depth color spaces
+    // TODO: Add dynamic quant based on monitor specs
+    // TODO: Gamma gAMA chunk handling
 
 RenderData *decode_png(FILE *file) {
 
@@ -29,7 +43,7 @@ RenderData *decode_png(FILE *file) {
             /*
              * Read in metadata, note h,w,
              * */
-            
+
             size_t ret = 0;
             ret += fread(&png_metadata.width, 1, 4, file);
             ret += fread(&png_metadata.height, 1, 4, file);
@@ -39,7 +53,9 @@ RenderData *decode_png(FILE *file) {
             ret += fread(&png_metadata.filter_method, 1, 1, file);
             ret += fread(&png_metadata.interlacing, 1, 1, file);
 
-            if (ret != 13) { return NULL; }
+            if (ret != 13) {
+                return NULL;
+            }
 
             png_metadata.width = ntohl(png_metadata.width);
             png_metadata.height = ntohl(png_metadata.height);
@@ -93,7 +109,6 @@ RenderData *decode_png(FILE *file) {
         }
 
         if (!memcmp(chunk_type, "bKGD", 4)) {
-
         }
 
         // Extract image data and append sequential IDAT chunks
@@ -152,24 +167,26 @@ RenderData *decode_png(FILE *file) {
 }
 
 void _set_color(uint16_t *unfiltered, const size_t stride, PNG_Metadata *md,
-                const size_t y, bool is_gray, bool is_plt) {
+                const size_t y, bool is_gray, bool is_plt, bool is_alpha) {
     uint16_t r, g, b, a;
     uint16_t desired_bdepth = 8;
     bool is_quant = 0;
 
     for (size_t x = 0; x < md->width; x++) {
-        // TODO: Add dynamic quant based on monitor specs
 
-        size_t offset = (y * stride) + (x * md->num_channels * md->bytes_per_channel);
+        size_t offset =
+            (y * stride) + (x * md->num_channels * md->bytes_per_channel);
         uint16_t index = unfiltered[offset];
         uint16_t palette_stride = index * 3;
 
-        // 
+
         if (md->bytes_per_channel > 1) {
             // TRUE 16 bit color
             r = (unfiltered[offset] << desired_bdepth) | unfiltered[offset + 1];
             g = (unfiltered[offset + 2] << desired_bdepth) | unfiltered[offset + 3];
             b = (unfiltered[offset + 4] << desired_bdepth) | unfiltered[offset + 5];
+            a = is_alpha ? (unfiltered[offset + 6] << desired_bdepth) | unfiltered[offset + 7]
+                         : UINT16_MAX;
 
             if (is_quant) {
                 r = r >> desired_bdepth;
@@ -185,13 +202,16 @@ void _set_color(uint16_t *unfiltered, const size_t stride, PNG_Metadata *md,
                 r = unfiltered[offset];
                 g = unfiltered[offset + 1];
                 b = unfiltered[offset + 2];
+                a = is_alpha ? unfiltered[offset + 3]
+                             : UINT16_MAX;
             }
+
             // Scale 8bit to 16bit
             r = (r << 8) | r;
             g = (g << 8) | g;
             b = (b << 8) | b;
+            a = (a << 8) | a;
         }
-        a = UINT16_MAX;
 
         if (is_gray) { r = g = b; }
 
@@ -211,65 +231,80 @@ int load_png_colors(PNG_Metadata *md, uint16_t alpha_data) {
     size_t stride = md->width * md->num_channels * md->bytes_per_channel;
     size_t scanline_width = stride + 1;
     uint16_t r, g, b, a;
-
     uint16_t *unfiltered = calloc(md->height * stride, sizeof(uint16_t));
+    bool is_plt, is_gray, is_alpha = 0;
 
-    // Handle color loading for all color spaces
+
     switch (md->color_space) {
-        // DONE: Add support for grayscale color spaces
-        // DONE: Refactor color stripping into function
-        // 
-        // TODO: Support 1, 2, 4 bit depth color spaces
-        // TODO: add support to alpha color spaces
-        // -    need to handle tRNS chunk
-        // -    need to handle in-sequence alpha
-        // TODO: Background bKGD chunk handling
-        // TODO: Gamma gAMA chunk handling
-        // TODO: Adam7 interlacing
 
-    case PNG_CS_GRAY: {
-        for (size_t y = 0; y < md->height; y++) {
-            unfilter_png(md->image_data[y * scanline_width], // Filter type
-                         y, unfiltered, scanline_width, stride, md);
+        case PNG_CS_GRAY: {
+            is_gray = 1;
 
-            _set_color(unfiltered, stride, md, y, 1, 0);
-        }
-        break;
-    }
+            for (size_t y = 0; y < md->height; y++) {
+                unfilter_png(md->image_data[y * scanline_width], // Filter type
+                            y, unfiltered, scanline_width, stride, md);
 
-    case PNG_CS_GRAY_ALPHA: {
-        break;
-    }
+                _set_color(unfiltered, stride, md, y, is_gray, is_plt, is_alpha);
+            }
 
-    case PNG_CS_PLTE: {
-        for (size_t y = 0; y < md->height; y++) {
-            unfilter_png(md->image_data[y * scanline_width], // Filter type
-                         y, unfiltered, scanline_width, stride, md);
-
-            _set_color(unfiltered, stride, md, y, 0, 1);
+            free(unfiltered);
+            break;
         }
 
-        free(unfiltered);
-        break;
-    }
+        case PNG_CS_GRAY_ALPHA: {
+            is_gray = 1;
+            is_alpha = 1;
 
-    // if (md->color_space == PNG_CS_RGB || md->color_space == CS_RGB_ALPHA) {
-    case PNG_CS_RGB: {
-        for (size_t y = 0; y < md->height; y++) {
-            unfilter_png(md->image_data[y * scanline_width], y, unfiltered,
-                         scanline_width, stride, md);
+            for (size_t y = 0; y < md->height; y++) {
+                unfilter_png(md->image_data[y * scanline_width], // Filter type
+                            y, unfiltered, scanline_width, stride, md);
 
-            // Set r, g, b, a values
-            _set_color(unfiltered, stride, md, y, 0, 0);
+                _set_color(unfiltered, stride, md, y, is_gray, is_plt, is_alpha);
+            }
+
+            free(unfiltered);
+            break;
         }
 
-        free(unfiltered);
-        break;
-    }
+        case PNG_CS_PLTE: {
+            is_plt = 1;
 
-    case PNG_CS_RGB_ALPHA: {
-        break;
-    }
+            for (size_t y = 0; y < md->height; y++) {
+                unfilter_png(md->image_data[y * scanline_width], // Filter type
+                            y, unfiltered, scanline_width, stride, md);
+
+                _set_color(unfiltered, stride, md, y, is_gray, is_plt, is_alpha);
+            }
+
+            free(unfiltered);
+            break;
+        }
+
+        case PNG_CS_RGB: {
+            for (size_t y = 0; y < md->height; y++) {
+                unfilter_png(md->image_data[y * scanline_width], y, unfiltered,
+                            scanline_width, stride, md);
+
+                _set_color(unfiltered, stride, md, y, is_gray, is_plt, is_alpha);
+            }
+
+            free(unfiltered);
+            break;
+        }
+
+        case PNG_CS_RGB_ALPHA: {
+            is_alpha = 1;
+
+            for (size_t y = 0; y < md->height; y++) {
+                unfilter_png(md->image_data[y * scanline_width], y, unfiltered,
+                            scanline_width, stride, md);
+
+                _set_color(unfiltered, stride, md, y, is_gray, is_plt, is_alpha);
+            }
+
+            free(unfiltered);
+            break;
+        }
     }
 
     return 0;
@@ -464,30 +499,30 @@ int unfilter_png(const unsigned char ftype, const size_t row_idx,
                  const size_t stride, PNG_Metadata *md) {
 
     switch (ftype) {
-    case PNG_FILTER_NONE: {
-        for (size_t x = 0; x < stride; x++) {
-            unfiltered[row_idx * stride + x] =
-                md->image_data[row_idx * scanline_width + x + 1];
+        case PNG_FILTER_NONE: {
+            for (size_t x = 0; x < stride; x++) {
+                unfiltered[row_idx * stride + x] =
+                    md->image_data[row_idx * scanline_width + x + 1];
+            }
+            break;
+        };
+        case PNG_FILTER_SUB: {
+            __filter_sub(md, unfiltered, row_idx);
+            break;
         }
-        break;
-    };
-    case PNG_FILTER_SUB: {
-        __filter_sub(md, unfiltered, row_idx);
-        break;
-    }
-    case PNG_FILTER_UP: {
-        __filter_up(md, unfiltered, row_idx);
-        break;
-    }
-    case PNG_FILTER_AVG: {
-        // printf("average path taken\n");
-        __filter_avg(md, unfiltered, row_idx);
-        break;
-    }
-    case PNG_FILTER_PAETH: {
-        __filter_paeth(md, unfiltered, row_idx);
-        break;
-    }
+        case PNG_FILTER_UP: {
+            __filter_up(md, unfiltered, row_idx);
+            break;
+        }
+        case PNG_FILTER_AVG: {
+            // printf("average path taken\n");
+            __filter_avg(md, unfiltered, row_idx);
+            break;
+        }
+        case PNG_FILTER_PAETH: {
+            __filter_paeth(md, unfiltered, row_idx);
+            break;
+        }
     }
 
     return 0;
