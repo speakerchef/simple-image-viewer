@@ -13,11 +13,13 @@ typedef struct ColorData {
 
 typedef struct RenderData {
     ColorData *color;
+    ColorData bg_color; 
     
     uint32_t width;
     uint32_t height;
     uint8_t bytes_per_channel;
     uint8_t num_channels;
+    bool set_bg;
     int ret;
 } RenderData;
 
