@@ -1,6 +1,6 @@
 # Image Viewer
 
-A lightweight image viewer built from scratch in C using SDL3 for rendering. The project focuses on parsing and displaying image formats without relying on external image decoding libraries.
+A lightweight image viewer built from scratch in C using SDL3 for rendering. The project focuses on parsing, pre-processing raw image data, and displaying image formats without relying on external image decoding libraries.
 
 **Full PNG spec can be found here: https://www.w3.org/TR/png-3/
 
