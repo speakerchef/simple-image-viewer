@@ -14,9 +14,9 @@
 // DONE:(2/2) add support to alpha color spaces
 // -   DONE: handle in-sequence alpha
 // -   DONE: handle tRNS chunk
-// TODO: (1/2) Background bKGD chunk handling
-    // DONE: Handle pure bKGD chunk
-    // TODO: Handle combined tRNS and bKGD chunks
+// DONE: (2/2) Background bKGD chunk handling
+    // DONE: Handle pure bKGD chunk 
+    // DONE: Handle combined tRNS and bKGD chunks
 // TODO: Handle cICP chunks
 // TODO: Error handling
 // TODO: Adam7 interlacing
@@ -136,32 +136,37 @@ RenderData *decode_png(FILE *file) {
             continue;
         }
 
+        // Get and set background colors if defined
         if (!memcmp(chunk_type, "bKGD", 4)) {
             size_t span = 0;
             if (png_metadata.color_space == PNG_CS_GRAY || png_metadata.color_space == PNG_CS_GRAY_ALPHA) {
-                span = sizeof(char) * 2;
+                unsigned char bkgd_dat[2];
+                fread(bkgd_dat, 2, 1, file);
+                png_metadata.set_bg = 1;
+
+                png_metadata.bg_color.r = ( bkgd_dat[0] << 8 ) | bkgd_dat[1];
+                png_metadata.bg_color.a = UINT16_MAX;
+
             } else if (png_metadata.color_space == PNG_CS_RGB || png_metadata.color_space == PNG_CS_RGB_ALPHA) {
-                span = sizeof(char) * 6;
-            } else {
-                span = sizeof(char);
-            }
+                unsigned char bkgd_dat[6];
+                fread(bkgd_dat, 6, 1, file);
+                png_metadata.set_bg = 1;
 
-            unsigned char bkgd_dat[span];
-            fread(bkgd_dat, span, 1, file);
-            png_metadata.set_bg = 1;
-
-            if (png_metadata.bytes_per_channel > 1) {
                 png_metadata.bg_color.r = ( bkgd_dat[0] << 8 ) | bkgd_dat[1];
                 png_metadata.bg_color.g = ( bkgd_dat[2] << 8 ) | bkgd_dat[3];
                 png_metadata.bg_color.b = ( bkgd_dat[4] << 8 ) | bkgd_dat[5];
                 png_metadata.bg_color.a = UINT16_MAX;
+
             } else {
-                png_metadata.bg_color.r = bkgd_dat[1];
-                png_metadata.bg_color.g = bkgd_dat[3];
-                png_metadata.bg_color.b = bkgd_dat[5];
+                unsigned char bkgd_dat;
+                fread(&bkgd_dat, sizeof(char), 1, file);
+                png_metadata.bg_color.r = png_metadata.palette[bkgd_dat];
+                png_metadata.bg_color.g = png_metadata.palette[bkgd_dat + 1];
+                png_metadata.bg_color.b = png_metadata.palette[bkgd_dat + 2];
                 png_metadata.bg_color.a = UINT8_MAX;
+                // printf("r: %u, g: %u, b: %u \n", png_metadata.bg_color.r, png_metadata.bg_color.g, png_metadata.bg_color.b);
             }
-            // printf("r: %u, g: %u, b: %u \n", bkgd_dat[1], bkgd_dat[3], bkgd_dat[5]);
+
 
             fseek(file, CRC_SZ, SEEK_CUR);
             continue;
