@@ -87,28 +87,35 @@ int main(int argc, char **argv) {
         // TODO: Add custom terminal based rendering
 
 
-         while (isRunning) {
+        while (isRunning) {
 
-             // Event handling
-             while (SDL_PollEvent(&event)) {
-                 switch (event.type) {
-                 case SDL_EVENT_WINDOW_CLOSE_REQUESTED:
-                     isRunning = false;
-                     break;
-                 case SDL_EVENT_KEY_DOWN:
-                     isRunning = !(event.key.scancode == 20);
-                     break;
-                 }
-             }
+            // Event handling
+            while (SDL_PollEvent(&event)) {
+                switch (event.type) {
+                case SDL_EVENT_WINDOW_CLOSE_REQUESTED:
+                    isRunning = false;
+                    break;
+                case SDL_EVENT_KEY_DOWN:
+                    isRunning = !(event.key.scancode == 20);
+                    break;
+                }
+            }
 
-             // SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
-             SDL_RenderClear(renderer);
-             SDL_RenderTexture(renderer, texture, NULL, NULL);
-             SDL_SetRenderVSync(renderer, 1);
-             SDL_RenderPresent(renderer);
+            
+            if (renderData->set_bg) {
+                SDL_SetRenderDrawColor(renderer, 
+                                       renderData->bg_color.r, 
+                                       renderData->bg_color.g, 
+                                       renderData->bg_color.b, 
+                                       renderData->bg_color.a);
+            }
+            SDL_RenderClear(renderer);
+            SDL_RenderTexture(renderer, texture, NULL, NULL);
+            SDL_SetRenderVSync(renderer, 1);
+            SDL_RenderPresent(renderer);
 
 
-         }
+        }
 
          free(renderData);
          SDL_DestroyTexture(texture);

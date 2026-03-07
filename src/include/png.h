@@ -38,6 +38,7 @@
 typedef struct ColorData ColorData;
 
 typedef struct PNG_Metadata {
+    ColorData bg_color; 
     unsigned char *image_data;
     unsigned char *palette;
     unsigned char *transparency;
@@ -55,6 +56,7 @@ typedef struct PNG_Metadata {
     unsigned char compress_method;
     unsigned char filter_method; // Useless
     unsigned char interlacing;
+    bool set_bg;
 } PNG_Metadata;
 
 

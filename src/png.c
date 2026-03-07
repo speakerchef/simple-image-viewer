@@ -6,6 +6,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 // DONE: Add support for grayscale color spaces
@@ -13,7 +14,8 @@
 // DONE:(2/2) add support to alpha color spaces
 // -   DONE: handle in-sequence alpha
 // -   DONE: handle tRNS chunk
-// TODO: Background bKGD chunk handling
+// TODO: (1/2) Background bKGD chunk handling
+    // DONE: Handle pure bKGD chunk
     // TODO: Handle combined tRNS and bKGD chunks
 // TODO: Handle cICP chunks
 // TODO: Error handling
@@ -25,6 +27,7 @@
 RenderData *decode_png(FILE *file) {
 
     PNG_Metadata png_metadata = {0};
+
     // Process chunks
     const uint8_t CRC_SZ = 4;
     while (1) {
@@ -134,6 +137,34 @@ RenderData *decode_png(FILE *file) {
         }
 
         if (!memcmp(chunk_type, "bKGD", 4)) {
+            size_t span = 0;
+            if (png_metadata.color_space == PNG_CS_GRAY || png_metadata.color_space == PNG_CS_GRAY_ALPHA) {
+                span = sizeof(char) * 2;
+            } else if (png_metadata.color_space == PNG_CS_RGB || png_metadata.color_space == PNG_CS_RGB_ALPHA) {
+                span = sizeof(char) * 6;
+            } else {
+                span = sizeof(char);
+            }
+
+            unsigned char bkgd_dat[span];
+            fread(bkgd_dat, span, 1, file);
+            png_metadata.set_bg = 1;
+
+            if (png_metadata.bytes_per_channel > 1) {
+                png_metadata.bg_color.r = ( bkgd_dat[0] << 8 ) | bkgd_dat[1];
+                png_metadata.bg_color.g = ( bkgd_dat[2] << 8 ) | bkgd_dat[3];
+                png_metadata.bg_color.b = ( bkgd_dat[4] << 8 ) | bkgd_dat[5];
+                png_metadata.bg_color.a = UINT16_MAX;
+            } else {
+                png_metadata.bg_color.r = bkgd_dat[1];
+                png_metadata.bg_color.g = bkgd_dat[3];
+                png_metadata.bg_color.b = bkgd_dat[5];
+                png_metadata.bg_color.a = UINT8_MAX;
+            }
+            // printf("r: %u, g: %u, b: %u \n", bkgd_dat[1], bkgd_dat[3], bkgd_dat[5]);
+
+            fseek(file, CRC_SZ, SEEK_CUR);
+            continue;
         }
 
         // Extract image data and append sequential IDAT chunks
@@ -182,6 +213,8 @@ RenderData *decode_png(FILE *file) {
     renderData->height = png_metadata.height;
     renderData->bytes_per_channel = png_metadata.bytes_per_channel;
     renderData->num_channels = png_metadata.num_channels;
+    renderData->bg_color = png_metadata.bg_color;
+    renderData->set_bg = png_metadata.set_bg;
     renderData->ret = ret;
 
     free(png_metadata.palette);
