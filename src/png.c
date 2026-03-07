@@ -6,19 +6,21 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <string.h>
 
-    // DONE: Add support for grayscale color spaces
-    // DONE: Refactor color stripping into function
-    //
-    // TODO:(1/2) **add support to alpha color spaces
-    // -   DONE: need to handle in-sequence alpha
-    // -    need to handle tRNS chunk
-    // TODO: Background bKGD chunk handling
-    // TODO: Error handling
-    // TODO: Adam7 interlacing
-    // TODO: Support 1, 2, 4 bit depth color spaces
-    // TODO: Add dynamic quant based on monitor specs
-    // TODO: Gamma gAMA chunk handling
+// DONE: Add support for grayscale color spaces
+// DONE: Refactor color stripping into function
+// DONE:(2/2) add support to alpha color spaces
+// -   DONE: handle in-sequence alpha
+// -   DONE: handle tRNS chunk
+// TODO: Background bKGD chunk handling
+    // TODO: Handle combined tRNS and bKGD chunks
+// TODO: Handle cICP chunks
+// TODO: Error handling
+// TODO: Adam7 interlacing
+// TODO: Support 1, 2, 4 bit depth color spaces
+// TODO: Add dynamic quant based on monitor specs
+// TODO: Gamma gAMA chunk handling
 
 RenderData *decode_png(FILE *file) {
 
@@ -36,7 +38,13 @@ RenderData *decode_png(FILE *file) {
 
         chunk_sz = ntohl(chunk_sz); // Big to little endian
         printf("Size of chunk is: %u, ", chunk_sz);
-        printf("Chunk type is: %s\n", chunk_type);
+        // printf("Chunk type is: %s\n", chunk_type);
+
+        printf("Chunk type is: ");
+        for (int i = 0; i < 4; i++) {
+            printf("%c", chunk_type[i]);
+        }
+        printf(" \n");
 
         // Extract image size
         if (!memcmp(chunk_type, "IHDR", 4)) {
@@ -101,8 +109,25 @@ RenderData *decode_png(FILE *file) {
                 fprintf(stderr, "Error: Invalid PLTE chunk.\n");
             }
 
-            png_metadata.palette = calloc(1, chunk_sz);
-            fread(png_metadata.palette, 1, chunk_sz, file);
+            png_metadata.palette = calloc(chunk_sz, sizeof(char));
+            fread(png_metadata.palette, sizeof(char), chunk_sz, file);
+
+            fseek(file, CRC_SZ, SEEK_CUR);
+            continue;
+        }
+
+        if (!memcmp(chunk_type, "tRNS", 4)) {
+            uint8_t span = PNG_CS_PLTE ? 1 : 2; // PLTE tRNS chunk has 1 bytes sequences 
+            png_metadata.transparency = calloc(chunk_sz, span);
+
+            fread(png_metadata.transparency, span, chunk_sz, file);
+            
+            png_metadata.trns_sz = chunk_sz;
+
+            for (size_t i = 0; i < chunk_sz*span; i++) {
+                printf("%02x ", png_metadata.transparency[i]);
+            }
+            printf("\n");
 
             fseek(file, CRC_SZ, SEEK_CUR);
             continue;
@@ -166,16 +191,22 @@ RenderData *decode_png(FILE *file) {
     return renderData;
 }
 
-void _set_color(uint16_t *unfiltered, const size_t stride, PNG_Metadata *md,
-                const size_t y, bool is_gray, bool is_plt, bool is_alpha) {
+void _set_color(uint16_t *unfiltered, 
+                const size_t stride, 
+                PNG_Metadata *md,
+                const size_t y, 
+                bool is_gray, 
+                bool is_plt, 
+                bool is_alpha
+                ) {
+
     uint16_t r, g, b, a;
     uint16_t desired_bdepth = 8;
     bool is_quant = 0;
 
     for (size_t x = 0; x < md->width; x++) {
 
-        size_t offset =
-            (y * stride) + (x * md->num_channels * md->bytes_per_channel);
+        size_t offset = (y * stride) + (x * md->num_channels * md->bytes_per_channel);
         uint16_t index = unfiltered[offset];
         uint16_t palette_stride = index * 3;
 
@@ -193,29 +224,33 @@ void _set_color(uint16_t *unfiltered, const size_t stride, PNG_Metadata *md,
                 g = g >> desired_bdepth;
                 b = b >> desired_bdepth;
             }
-        } else {
+        } else { // <= 8bit
             if (is_plt) {
                 r = md->palette[palette_stride];
                 g = md->palette[palette_stride + 1];
                 b = md->palette[palette_stride + 2];
+                a = ( index < md->trns_sz ) ? md->transparency[index]
+                                            : UINT8_MAX;
             } else {
                 r = unfiltered[offset];
                 g = unfiltered[offset + 1];
                 b = unfiltered[offset + 2];
                 a = is_alpha ? unfiltered[offset + 3]
-                             : UINT16_MAX;
+                             : UINT8_MAX;
             }
 
             // Scale 8bit to 16bit
-            r = (r << 8) | r;
-            g = (g << 8) | g;
-            b = (b << 8) | b;
-            a = (a << 8) | a;
+            r = (r << 8);
+            g = (g << 8);
+            b = (b << 8);
+            a = (a << 8);
+        } // <= 8bit
+
+        if (is_gray) {
+            md->pixel_color[y * md->width + x] = (ColorData){r, r, r, a};
+        } else {
+            md->pixel_color[y * md->width + x] = (ColorData){r, g, b, a};
         }
-
-        if (is_gray) { r = g = b; }
-
-        md->pixel_color[y * md->width + x] = (ColorData){r, g, b, a};
     }
 }
 
@@ -275,6 +310,15 @@ int load_png_colors(PNG_Metadata *md, uint16_t alpha_data) {
 
                 _set_color(unfiltered, stride, md, y, is_gray, is_plt, is_alpha);
             }
+
+            // if (md->transparency) {
+            //     size_t i = 0;
+            //     for (;i < md->_trns_sz; i++) {
+            //         md->pixel_color[i].a = md->transparency[i];
+            //     }
+            //     size_t _trns_offset = ( (md->height * md->width) - md->_trns_sz );
+            // }
+
 
             free(unfiltered);
             break;
