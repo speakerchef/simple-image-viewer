@@ -40,9 +40,10 @@ typedef struct ColorData ColorData;
 typedef struct PNG_Metadata {
     unsigned char *image_data;
     unsigned char *palette;
-    // SDL_Color *pixel_color;
+    unsigned char *transparency;
     ColorData *pixel_color;
     size_t total_size;
+    size_t trns_sz;
     uint32_t width;
     uint32_t height;
     uint16_t alpha_data;
