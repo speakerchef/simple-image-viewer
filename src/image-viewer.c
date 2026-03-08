@@ -70,11 +70,12 @@ int main(int argc, char **argv) {
 
         bool isRunning = true;
         SDL_Event event;
-        int pixel_format = SDL_PIXELFORMAT_RGBA128_FLOAT;
-        int pitch = x * 16;
+        int pixel_format = SDL_PIXELFORMAT_RGBA64;
+        int pitch = x * 8;
 
         SDL_Renderer *renderer = SDL_CreateRenderer(window, NULL);
         SDL_Surface *surface = SDL_CreateSurfaceFrom(x, y, pixel_format, renderData->color, pitch);
+        SDL_SetSurfaceColorspace(surface, SDL_COLORSPACE_SRGB_LINEAR);
 
         if (surface == NULL) {
             SDL_Log("CreateRGBSurface failed: %s", SDL_GetError());
@@ -105,7 +106,7 @@ int main(int argc, char **argv) {
                 }
             }
 
-            
+
             if (renderData->set_bg) {
                 SDL_SetRenderDrawColor(renderer, 
                                        renderData->bg_color.r, 
@@ -128,7 +129,7 @@ int main(int argc, char **argv) {
         return 0;
     }
 
-
+    // while (1) { sleep(5000);};
     printf("Error opening window.\n");
 }
 

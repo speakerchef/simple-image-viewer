@@ -9,8 +9,8 @@
 #include <stdlib.h>
 #include <string.h>
 
-// TODO: Handle cICP chunks
-//  - TODO: Implement Perceptual quantization (PQ) transfer function
+// DONE: Handle cICP chunks
+//  - DONE: Implement Perceptual quantization (PQ) transfer function
 // TODO: Error handling
 // TODO: Adam7 interlacing
 // TODO: Support 1, 2, 4 bit depth color spaces
@@ -149,18 +149,18 @@ RenderData *decode_png(FILE *file) {
                 fread(bkgd_dat, sizeof(char), chunk_sz, file);
                 png_metadata.set_bg = 1;
 
-                png_metadata.bg_color.r = ( bkgd_dat[0] << 8 ) | bkgd_dat[1];
-                png_metadata.bg_color.a = UINT16_MAX;
+                png_metadata.bg_color.r = (( bkgd_dat[0] << 8 ) | bkgd_dat[1]) >> 8;
+                png_metadata.bg_color.a = UINT8_MAX;
 
             } else if (png_metadata.color_space == PNG_CS_RGB || png_metadata.color_space == PNG_CS_RGB_ALPHA) {
                 unsigned char bkgd_dat[chunk_sz];
                 fread(bkgd_dat, sizeof(char), chunk_sz, file);
                 png_metadata.set_bg = 1;
 
-                png_metadata.bg_color.r = ( bkgd_dat[0] << 8 ) | bkgd_dat[1];
-                png_metadata.bg_color.g = ( bkgd_dat[2] << 8 ) | bkgd_dat[3];
-                png_metadata.bg_color.b = ( bkgd_dat[4] << 8 ) | bkgd_dat[5];
-                png_metadata.bg_color.a = UINT16_MAX;
+                png_metadata.bg_color.r = (( bkgd_dat[0] << 8 ) | bkgd_dat[1]) >> 8;
+                png_metadata.bg_color.g = (( bkgd_dat[2] << 8 ) | bkgd_dat[3]) >> 8;
+                png_metadata.bg_color.b = (( bkgd_dat[4] << 8 ) | bkgd_dat[5]) >> 8;
+                png_metadata.bg_color.a = UINT8_MAX;
 
             } else {
                 unsigned char bkgd_dat;
@@ -241,10 +241,9 @@ void _set_color(uint16_t *unfiltered,
                 const size_t y
                 ) {
 
-    uint16_t r, g, b, a;
-    float rf, gf, bf, af;
-    uint16_t desired_bdepth = 8;
+    uint8_t desired_bdepth = 8;
     bool is_quant = 0;
+    uint16_t r, g, b, a;
 
     for (size_t x = 0; x < md->width; x++) {
 
@@ -254,7 +253,6 @@ void _set_color(uint16_t *unfiltered,
 
 
         if (md->bytes_per_channel > 1) {
-            // TRUE 16 bit color
             r = (unfiltered[offset] << desired_bdepth) | unfiltered[offset + 1];
             g = (unfiltered[offset + 2] << desired_bdepth) | unfiltered[offset + 3];
             b = (unfiltered[offset + 4] << desired_bdepth) | unfiltered[offset + 5];
@@ -263,7 +261,6 @@ void _set_color(uint16_t *unfiltered,
 
 
             if (md->has_cicp) {
-                //TODO: Handle loading of different transfer functions
                 double lin_rgb[3] = {
                     _prc_pq_transfer_func(&r) / BT2100_REF_WHITE, 
                     _prc_pq_transfer_func(&g) / BT2100_REF_WHITE, 
@@ -282,10 +279,12 @@ void _set_color(uint16_t *unfiltered,
                 CLAMP(result.coeffs[1], 1., 0.);
                 CLAMP(result.coeffs[2], 1., 0.);
 
-                rf = result.coeffs[0];
-                gf = result.coeffs[1];
-                bf = result.coeffs[2];
-                af = (float)a / UINT16_MAX;
+                r = round(result.coeffs[0] * UINT16_MAX);
+                g = round(result.coeffs[1] * UINT16_MAX);
+                b = round(result.coeffs[2] * UINT16_MAX);
+                // r = round(lin_rgb[0] * UINT16_MAX);
+                // g = round(lin_rgb[1] * UINT16_MAX);
+                // b = round(lin_rgb[2] * UINT16_MAX);
 
                 free(result.coeffs);
             }
@@ -296,26 +295,24 @@ void _set_color(uint16_t *unfiltered,
                 g = md->palette[palette_stride + 1];
                 b = md->palette[palette_stride + 2];
                 a = ( index < md->trns_sz ) ? md->transparency[index]
-                                            : UINT8_MAX;
+                                            : UINT16_MAX;
             } else {
                 r = unfiltered[offset];
                 g = unfiltered[offset + 1];
                 b = unfiltered[offset + 2];
                 a = md->is_alpha ? unfiltered[offset + 3]
-                             : UINT8_MAX;
+                             : UINT16_MAX;
             }
-            rf = (float)r / ((1 << md->bit_depth) - 1);
-            gf = (float)g / ((1 << md->bit_depth) - 1);
-            bf = (float)b / ((1 << md->bit_depth) - 1);
-            af = (float)a / ((1 << md->bit_depth) - 1);
 
+            r <<= 8;
+            g <<= 8;
+            b <<= 8;
         }
-        
 
         if (md->is_gray) {
-            md->pixel_color[y * md->width + x] = (ColorData){r, r, r, a};
+            md->pixel_color[y * md->width + x] = (ColorData16){r, r, r, a};
         } else {
-            md->pixel_color[y * md->width + x] = (ColorData){rf, gf, bf, af};
+            md->pixel_color[y * md->width + x] = (ColorData16){r, g, b, a};
         }
 
     }
@@ -364,10 +361,13 @@ int load_png_colors(PNG_Metadata *md, uint16_t alpha_data) {
         return 1;
     }
 
-    md->pixel_color = calloc(md->width * md->height, sizeof(ColorData));
+    size_t alloc_sz = 0;
+    if (md->bit_depth <= 8) { alloc_sz = sizeof(ColorData8); }
+    else { alloc_sz = sizeof(ColorData16); }
+
+    md->pixel_color = calloc(md->width * md->height, alloc_sz);
     size_t stride = md->width * md->num_channels * md->bytes_per_channel;
     size_t scanline_width = stride + 1;
-    uint16_t r, g, b, a;
     uint16_t *unfiltered = calloc(md->height * stride, sizeof(uint16_t));
 
     for (size_t y = 0; y < md->height; y++) {

@@ -28,16 +28,30 @@
     if ((a) < (min)) (a) = (min); \
 })
 
-typedef struct ColorData {
+typedef struct ColorDataF {
     float r;
     float g;
     float b;
     float a;
-} ColorData;
+} ColorDataF;
+
+typedef struct ColorData16 {
+    uint16_t r;
+    uint16_t g;
+    uint16_t b;
+    uint16_t a;
+} ColorData16;
+
+typedef struct ColorData8 {
+    uint16_t r;
+    uint16_t g;
+    uint16_t b;
+    uint16_t a;
+} ColorData8;
 
 typedef struct RenderData {
-    ColorData *color;
-    ColorData bg_color; 
+    ColorData16 *color;
+    ColorData8 bg_color; 
     
     uint32_t width;
     uint32_t height;

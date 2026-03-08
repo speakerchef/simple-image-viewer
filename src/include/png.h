@@ -35,16 +35,17 @@
 #define PNG_FILTER_PAETH 4
 
 #define REC_709_GAMMA 2.4
-#define BT2100_REF_WHITE 0.0203
+// #define BT2100_REF_WHITE 0.0203
+#define BT2100_REF_WHITE 0.01
 
 typedef struct ColorData ColorData;
 
 typedef struct PNG_Metadata {
-    ColorData bg_color; 
+    ColorData8 bg_color; 
     unsigned char *image_data;
     unsigned char *palette;
     unsigned char *transparency;
-    ColorData *pixel_color;
+    ColorData16 *pixel_color;
     size_t total_size;
     size_t trns_sz;
     uint32_t width;
