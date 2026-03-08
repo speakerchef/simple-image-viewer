@@ -82,7 +82,8 @@ static const Matrix xyz2rgb_mat = {_xyz2srgb_d65_const_mat, 3, 3};
 void _set_color(uint16_t *unfiltered, const size_t stride, PNG_Metadata *md, const size_t y);
 void apply_R709_gamma(double *I);
 void apply_sRGB_gamma(double *I);
-double _prc_pq_transfer_func(uint16_t *E_pr);
+double pq_transfer_func(uint16_t *E_pr);
+double hlg_transfer_func(uint16_t *E_pr);
 int load_png_colors(PNG_Metadata *md, uint16_t alpha_data);
 int uncompress_png(unsigned char *input, 
                    unsigned char *output, 

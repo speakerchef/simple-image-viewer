@@ -9,8 +9,9 @@
 #include <stdlib.h>
 #include <string.h>
 
-// DONE: Handle cICP chunks
+// TODO: Handle cICP chunks
 //  - DONE: Implement Perceptual quantization (PQ) transfer function
+//  - TODO: HLG Transfer function
 // TODO: Error handling
 // TODO: Adam7 interlacing
 // TODO: Support 1, 2, 4 bit depth color spaces
@@ -262,9 +263,9 @@ void _set_color(uint16_t *unfiltered,
 
             if (md->has_cicp) {
                 double lin_rgb[3] = {
-                    _prc_pq_transfer_func(&r) / BT2100_REF_WHITE, 
-                    _prc_pq_transfer_func(&g) / BT2100_REF_WHITE, 
-                    _prc_pq_transfer_func(&b) / BT2100_REF_WHITE
+                    pq_transfer_func(&r) / BT2100_REF_WHITE, 
+                    pq_transfer_func(&g) / BT2100_REF_WHITE, 
+                    pq_transfer_func(&b) / BT2100_REF_WHITE
                 };
 
                 Matrix XYZ = {lin_rgb, 1, 3};
@@ -337,7 +338,7 @@ void apply_sRGB_gamma(double *I) {
     }
 }
 
-double _prc_pq_transfer_func(uint16_t *E_pr) {
+double pq_transfer_func(uint16_t *E_pr) {
     /*
      * Non-linear to linear space
      * As defined in Rec. ITU-R BT.2100-3
@@ -352,6 +353,10 @@ double _prc_pq_transfer_func(uint16_t *E_pr) {
     double Y = pow(_b, m1_const); // Linear normalized color in XYZ 
 
     return Y;
+}
+
+double hlg_transfer_func(uint16_t *E_pr) {
+    return 1.;
 }
 
 int load_png_colors(PNG_Metadata *md, uint16_t alpha_data) {
