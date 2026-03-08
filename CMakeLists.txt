@@ -16,6 +16,7 @@ set(CMAKE_BUILD_TYPE Debug)
 add_executable(image-viewer WIN32 
 ./src/image-viewer.c
 ./src/png.c
+./src/utils.c
 )
 
 # Link to the actual SDL3 library.

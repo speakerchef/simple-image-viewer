@@ -1,6 +1,11 @@
 #pragma once
+
+#include <stddef.h>
 #include <stdint.h>
+#include <stdlib.h>
 #include <SDL3/SDL.h>
+#include <assert.h>
+
 
 #define ERR_BAD_FILE "Error: Could not open image; File data corrupt or invalid.\n" 
 
@@ -16,12 +21,18 @@
 
 // Utils
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
+#define MIN(a, b) ((a) < (b) ? (a) : (b))
+
+#define CLAMP(a, max, min) ({     \
+    if ((a) > (max)) (a) = (max); \
+    if ((a) < (min)) (a) = (min); \
+})
 
 typedef struct ColorData {
-    uint16_t r;
-    uint16_t g;
-    uint16_t b;
-    uint16_t a;
+    float r;
+    float g;
+    float b;
+    float a;
 } ColorData;
 
 typedef struct RenderData {
@@ -36,3 +47,10 @@ typedef struct RenderData {
     int ret;
 } RenderData;
 
+typedef struct Matrix {
+    double *coeffs;
+    size_t rows;
+    size_t cols;
+} Matrix;
+
+void _matrix_mult(const Matrix *A, const Matrix *B, Matrix *C); 

@@ -56,21 +56,26 @@ int main(int argc, char **argv) {
     uint32_t x = renderData->width;
     uint32_t y = renderData->height;
 
+
+
     SDL_Window *window = SDL_CreateWindow("Image Viewer", x, y, 0);
     SDL_SetWindowPosition(window,
                           SDL_WINDOWPOS_CENTERED,
                           SDL_WINDOWPOS_CENTERED
                         );
 
+
+
     if (window) {
 
         bool isRunning = true;
         SDL_Event event;
-        int pixel_format = SDL_PIXELFORMAT_RGBA64;
-        int pitch = x * 8;
+        int pixel_format = SDL_PIXELFORMAT_RGBA128_FLOAT;
+        int pitch = x * 16;
 
         SDL_Renderer *renderer = SDL_CreateRenderer(window, NULL);
         SDL_Surface *surface = SDL_CreateSurfaceFrom(x, y, pixel_format, renderData->color, pitch);
+
         if (surface == NULL) {
             SDL_Log("CreateRGBSurface failed: %s", SDL_GetError());
             exit(1);
@@ -82,9 +87,8 @@ int main(int argc, char **argv) {
         }
 
         SDL_DestroySurface(surface);
+        free(renderData->color);
         surface = NULL;
-        // printf("\x1b[38;2;255;100;0mThis is true color text\x1b[0m\n");
-        // TODO: Add custom terminal based rendering
 
 
         while (isRunning) {
@@ -113,7 +117,6 @@ int main(int argc, char **argv) {
             SDL_RenderTexture(renderer, texture, NULL, NULL);
             SDL_SetRenderVSync(renderer, 1);
             SDL_RenderPresent(renderer);
-
 
         }
 

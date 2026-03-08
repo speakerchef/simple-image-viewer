@@ -33,13 +33,13 @@ RenderData *decode_png(FILE *file) {
             break;
 
         chunk_sz = ntohl(chunk_sz); // Big to little endian
-        printf("Size of chunk is: %u, ", chunk_sz);
+        // printf("Size of chunk is: %u, ", chunk_sz);
 
-        printf("Chunk type is: ");
-        for (int i = 0; i < 4; i++) {
-            printf("%c", chunk_type[i]);
-        }
-        printf(" \n");
+        // printf("Chunk type is: ");
+        // for (int i = 0; i < 4; i++) {
+        //     printf("%c", chunk_type[i]);
+        // }
+        // printf(" \n");
 
         // Extract image size
         if (!memcmp(chunk_type, "IHDR", 4)) {
@@ -68,6 +68,7 @@ RenderData *decode_png(FILE *file) {
             switch (png_metadata.color_space) {
             case PNG_CS_GRAY: {
                 png_metadata.num_channels = 1;
+                png_metadata.is_gray = 1;
                 break;
             }
             case PNG_CS_RGB: {
@@ -76,14 +77,18 @@ RenderData *decode_png(FILE *file) {
             }
             case PNG_CS_PLTE: {
                 png_metadata.num_channels = 1;
+                png_metadata.is_plt = 1;
                 break;
             }
             case PNG_CS_GRAY_ALPHA: {
                 png_metadata.num_channels = 2;
+                png_metadata.is_gray = 1;
+                png_metadata.is_alpha = 1;
                 break;
             }
             case PNG_CS_RGB_ALPHA: {
                 png_metadata.num_channels = 4;
+                png_metadata.is_alpha = 1;
                 break;
             }
             }
@@ -107,6 +112,7 @@ RenderData *decode_png(FILE *file) {
             }
             printf("\n");
 
+            png_metadata.has_cicp = 1;
 
             fseek(file, CRC_SZ, SEEK_CUR);
             continue;
@@ -171,11 +177,13 @@ RenderData *decode_png(FILE *file) {
             continue;
         }
 
-        // Extract image data and append sequential IDAT chunks if (!memcmp(chunk_type, "IDAT", 4)) {
-            png_metadata.image_data = realloc(
-                png_metadata.image_data, png_metadata.total_size + chunk_sz);
+        // Extract image data and append sequential IDAT chunks 
+        if (!memcmp(chunk_type, "IDAT", 4)) {
+            png_metadata.image_data = realloc( png_metadata.image_data,
+                                              png_metadata.total_size + chunk_sz);
 
-            fread(png_metadata.image_data + png_metadata.total_size, 1,
+            fread(png_metadata.image_data + png_metadata.total_size, 
+                  1,
                   chunk_sz, file);
 
             png_metadata.total_size += chunk_sz;
@@ -192,12 +200,14 @@ RenderData *decode_png(FILE *file) {
         fseek(file, chunk_sz + CRC_SZ, SEEK_CUR);
     }
 
-    size_t scanline_size = (png_metadata.width * png_metadata.num_channels *
-                                png_metadata.bit_depth +
-                            7) /
-                           8;
+    size_t scanline_size = (png_metadata.width * 
+                            png_metadata.num_channels * 
+
+                            png_metadata.bit_depth + 7) / 8;
+
     size_t output_size = png_metadata.height *
                          (scanline_size + 1); // +1 to account for filter byte
+
     unsigned char *output_buffer = calloc(output_size, sizeof(unsigned char));
 
     int ret =
@@ -228,13 +238,11 @@ RenderData *decode_png(FILE *file) {
 void _set_color(uint16_t *unfiltered, 
                 const size_t stride, 
                 PNG_Metadata *md,
-                const size_t y, 
-                bool is_gray, 
-                bool is_plt, 
-                bool is_alpha
+                const size_t y
                 ) {
 
     uint16_t r, g, b, a;
+    float rf, gf, bf, af;
     uint16_t desired_bdepth = 8;
     bool is_quant = 0;
 
@@ -250,20 +258,40 @@ void _set_color(uint16_t *unfiltered,
             r = (unfiltered[offset] << desired_bdepth) | unfiltered[offset + 1];
             g = (unfiltered[offset + 2] << desired_bdepth) | unfiltered[offset + 3];
             b = (unfiltered[offset + 4] << desired_bdepth) | unfiltered[offset + 5];
-            a = is_alpha ? (unfiltered[offset + 6] << desired_bdepth) | unfiltered[offset + 7]
+            a = md->is_alpha ? (unfiltered[offset + 6] << desired_bdepth) | unfiltered[offset + 7]
                          : UINT16_MAX;
 
-            // printf("R BEFORE: %u ", r);
-            // _prc_pq_transfer_func(&r);
-            // printf("R AFTER: %u \n", r);
 
-            if (is_quant) {
-                r = r >> desired_bdepth;
-                g = g >> desired_bdepth;
-                b = b >> desired_bdepth;
+            if (md->has_cicp) {
+                //TODO: Handle loading of different transfer functions
+                double lin_rgb[3] = {
+                    _prc_pq_transfer_func(&r) / BT2100_REF_WHITE, 
+                    _prc_pq_transfer_func(&g) / BT2100_REF_WHITE, 
+                    _prc_pq_transfer_func(&b) / BT2100_REF_WHITE
+                };
+
+                Matrix XYZ = {lin_rgb, 1, 3};
+                Matrix result = {0};
+                result.rows = XYZ.rows;
+                result.cols = xyz2rgb_mat.cols;
+                result.coeffs = malloc(sizeof(double) * (result.rows * result.cols));
+
+                _matrix_mult(&XYZ, &xyz2rgb_mat, &result);
+
+                CLAMP(result.coeffs[0], 1., 0.);
+                CLAMP(result.coeffs[1], 1., 0.);
+                CLAMP(result.coeffs[2], 1., 0.);
+
+                rf = result.coeffs[0];
+                gf = result.coeffs[1];
+                bf = result.coeffs[2];
+                af = (float)a / UINT16_MAX;
+
+                free(result.coeffs);
             }
-        } else { // <= 8bit
-            if (is_plt) {
+
+        } else {
+            if (md->is_plt) {
                 r = md->palette[palette_stride];
                 g = md->palette[palette_stride + 1];
                 b = md->palette[palette_stride + 2];
@@ -273,26 +301,46 @@ void _set_color(uint16_t *unfiltered,
                 r = unfiltered[offset];
                 g = unfiltered[offset + 1];
                 b = unfiltered[offset + 2];
-                a = is_alpha ? unfiltered[offset + 3]
+                a = md->is_alpha ? unfiltered[offset + 3]
                              : UINT8_MAX;
             }
+            rf = (float)r / ((1 << md->bit_depth) - 1);
+            gf = (float)g / ((1 << md->bit_depth) - 1);
+            bf = (float)b / ((1 << md->bit_depth) - 1);
+            af = (float)a / ((1 << md->bit_depth) - 1);
 
-            // Scale 8bit to 16bit
-            r = (r << 8);
-            g = (g << 8);
-            b = (b << 8);
-            a = (a << 8);
-        } // <= 8bit
+        }
+        
 
-        if (is_gray) {
+        if (md->is_gray) {
             md->pixel_color[y * md->width + x] = (ColorData){r, r, r, a};
         } else {
-            md->pixel_color[y * md->width + x] = (ColorData){r, g, b, a};
+            md->pixel_color[y * md->width + x] = (ColorData){rf, gf, bf, af};
         }
+
     }
 }
 
-void _prc_pq_transfer_func(uint16_t *E_pr) {
+void apply_R709_gamma(double *I) {
+    *I = MIN(1., *I);
+    *I = MAX(0., *I);
+    if (*I < 0.018) {
+        *I = 4.5 * *I;
+    } else {
+        *I = 1.099 * pow(*I, 0.45) - 0.099;
+    }
+}
+void apply_sRGB_gamma(double *I) {
+    *I = MIN(1., *I);
+    *I = MAX(0., *I);
+    if (*I <= 0.0031308) {
+        *I = 12.92 * *I;
+    } else {
+        *I = 1.055 * pow(*I, 1. / REC_709_GAMMA) - 0.055;
+    }
+}
+
+double _prc_pq_transfer_func(uint16_t *E_pr) {
     /*
      * Non-linear to linear space
      * As defined in Rec. ITU-R BT.2100-3
@@ -301,33 +349,18 @@ void _prc_pq_transfer_func(uint16_t *E_pr) {
     const double m2_const = (1 / _M2);
     const double m1_const = (1 / _M1);
 
-    //BOOM
     double _max = MAX( (pow(input, m2_const) - _C1), 0 );
     double _dc3 =  _C3 * pow(input, m2_const);
     double _b = fabs(_max / ( _C2 - _dc3 ));
-    double luminance = pow(_b, m1_const);
-    
-    const double matrix[3][3] = {
-        { 3.2404542, -1.5371385, -0.4985314 },
-        { -0.9692660,  1.8760108,  0.0415560 },
-        { 0.0556434, -0.2040259,  1.0572252 }
-    };
+    double Y = pow(_b, m1_const); // Linear normalized color in XYZ 
 
-    double chrom_r[2] = {0.708, 0.292};
-    double chrom_g[2] = {0.170, 0.797};
-    double chrom_b[2] = {0.131, 0.046};
-    double ref_wht[2] = {0.3127, 0.3290};
-    // printf("Y: %lf\n", y);
-
-    // uint16_t res = y * UINT16_MAX;
-    // printf("RES: %u\n", res);
-    // *E_pr = (uint16_t)floor(10000 * y);
+    return Y;
 }
 
 int load_png_colors(PNG_Metadata *md, uint16_t alpha_data) {
 
     if (md->width < 1 || md->height < 1 || md->num_channels < 1) {
-        fprintf(stderr, "Error: Could not not load colors; Invalid metadata!\n");
+        fprintf(stderr, ERR_BAD_FILE);
         return 1;
     }
 
@@ -336,81 +369,15 @@ int load_png_colors(PNG_Metadata *md, uint16_t alpha_data) {
     size_t scanline_width = stride + 1;
     uint16_t r, g, b, a;
     uint16_t *unfiltered = calloc(md->height * stride, sizeof(uint16_t));
-    bool is_plt, is_gray, is_alpha = 0;
 
+    for (size_t y = 0; y < md->height; y++) {
+        unfilter_png(md->image_data[y * scanline_width], // Filter type
+                    y, unfiltered, scanline_width, stride, md);
 
-    switch (md->color_space) {
-
-        case PNG_CS_GRAY: {
-            is_gray = 1;
-
-            for (size_t y = 0; y < md->height; y++) {
-                unfilter_png(md->image_data[y * scanline_width], // Filter type
-                            y, unfiltered, scanline_width, stride, md);
-
-                _set_color(unfiltered, stride, md, y, is_gray, is_plt, is_alpha);
-            }
-
-            free(unfiltered);
-            break;
-        }
-
-        case PNG_CS_GRAY_ALPHA: {
-            is_gray = 1;
-            is_alpha = 1;
-
-            for (size_t y = 0; y < md->height; y++) {
-                unfilter_png(md->image_data[y * scanline_width], // Filter type
-                            y, unfiltered, scanline_width, stride, md);
-
-                _set_color(unfiltered, stride, md, y, is_gray, is_plt, is_alpha);
-            }
-
-            free(unfiltered);
-            break;
-        }
-
-        case PNG_CS_PLTE: {
-            is_plt = 1;
-
-            for (size_t y = 0; y < md->height; y++) {
-                unfilter_png(md->image_data[y * scanline_width], // Filter type
-                            y, unfiltered, scanline_width, stride, md);
-
-                _set_color(unfiltered, stride, md, y, is_gray, is_plt, is_alpha);
-            }
-
-            free(unfiltered);
-            break;
-        }
-
-        case PNG_CS_RGB: {
-            for (size_t y = 0; y < md->height; y++) {
-                unfilter_png(md->image_data[y * scanline_width], y, unfiltered,
-                            scanline_width, stride, md);
-
-                _set_color(unfiltered, stride, md, y, is_gray, is_plt, is_alpha);
-            }
-
-            free(unfiltered);
-            break;
-        }
-
-        case PNG_CS_RGB_ALPHA: {
-            is_alpha = 1;
-
-            for (size_t y = 0; y < md->height; y++) {
-                unfilter_png(md->image_data[y * scanline_width], y, unfiltered,
-                            scanline_width, stride, md);
-
-                _set_color(unfiltered, stride, md, y, is_gray, is_plt, is_alpha);
-            }
-
-            free(unfiltered);
-            break;
-        }
+        _set_color(unfiltered, stride, md, y);
     }
 
+    free(unfiltered);
     return 0;
 }
 

@@ -34,6 +34,8 @@
 #define PNG_FILTER_AVG 3
 #define PNG_FILTER_PAETH 4
 
+#define REC_709_GAMMA 2.4
+#define BT2100_REF_WHITE 0.0203
 
 typedef struct ColorData ColorData;
 
@@ -57,12 +59,29 @@ typedef struct PNG_Metadata {
     unsigned char filter_method; // Useless
     unsigned char interlacing;
     bool set_bg;
+    bool is_plt;
+    bool is_gray;
+    bool is_alpha;
+    bool has_cicp;
 } PNG_Metadata;
 
+// Calculated using BT 2020 and Rec. 709
+// primaries. Specifically: T = tranpose(inv(709) * 2100)
+// with white point D65
+// https://physics.stackexchange.com/questions/487763/how-are-the-matrices-for-the-rgb-to-from-cie-xyz-conversions-generated#:~:text=In%20the%20end%2C%20it's%20just,)%20=%201%20%2D%20x%20%2D%20y
+static double _xyz2srgb_d65_const_mat[9] = {
+    1.660376, -0.124417, -0.018110,
+    -0.587656,  1.132856, -0.100556,
+    -0.072850, -0.008381,  1.118788
+};
+
+static const Matrix xyz2rgb_mat = {_xyz2srgb_d65_const_mat, 3, 3};
 
 // Fwd decs
-void _set_color(uint16_t *unfiltered, const size_t stride, PNG_Metadata *md, const size_t y, bool is_gray, bool is_plt, bool is_alpha);
-void _prc_pq_transfer_func(uint16_t *E_pr);
+void _set_color(uint16_t *unfiltered, const size_t stride, PNG_Metadata *md, const size_t y);
+void apply_R709_gamma(double *I);
+void apply_sRGB_gamma(double *I);
+double _prc_pq_transfer_func(uint16_t *E_pr);
 int load_png_colors(PNG_Metadata *md, uint16_t alpha_data);
 int uncompress_png(unsigned char *input, 
                    unsigned char *output, 
