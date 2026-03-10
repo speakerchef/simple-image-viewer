@@ -63,7 +63,9 @@ typedef struct PNG_Metadata {
     bool is_plt;
     bool is_gray;
     bool is_alpha;
-    bool has_cicp;
+    bool is_hdr;
+    bool is_pq;
+    bool is_hlg;
 } PNG_Metadata;
 
 // Calculated using BT 2020 and Rec. 709

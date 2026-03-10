@@ -58,6 +58,7 @@ RenderData *decode_png(FILE *file) {
             ret += fread(&png_metadata.interlacing, 1, 1, file);
 
             if (ret != 13) {
+                fprintf(stderr, ERR_BAD_FILE);
                 return NULL;
             }
 
@@ -105,15 +106,36 @@ RenderData *decode_png(FILE *file) {
         }
 
         if (!memcmp(chunk_type, "cICP", 4)) {
+            if (chunk_sz != 4) {
+                fprintf(stderr, ERR_BAD_FILE);
+                return NULL;
+            }
             unsigned char cicp_dat[chunk_sz]; 
             fread(cicp_dat, sizeof(char), chunk_sz, file);
 
-            for (size_t i = 0; i < chunk_sz; i++) {
-                printf("%u ", cicp_dat[i]); 
-            }
-            printf("\n");
+            if (cicp_dat[0] != 0x09) { fprintf(stderr, WARN_BAD_DATA); }
 
-            png_metadata.has_cicp = 1;
+            // for (size_t i = 0; i < chunk_sz; i++) {
+            //     printf("%02x ", cicp_dat[i]); 
+            // }
+            // printf("\n");
+
+            switch (cicp_dat[1]){
+                case 0x10: {
+                    png_metadata.is_pq = 1;
+                    break;
+                }
+                case 0x12: {
+                    png_metadata.is_hlg = 1;
+                    break;
+                }
+                default: { 
+                    fprintf(stderr, WARN_BAD_DATA); 
+                    break;
+                }
+            }
+
+            png_metadata.is_hdr = 1;
 
             fseek(file, CRC_SZ, SEEK_CUR);
             continue;
@@ -122,7 +144,8 @@ RenderData *decode_png(FILE *file) {
         // Extract color palette information if available
         if (!memcmp(chunk_type, "PLTE", 4)) {
             if (chunk_sz % 3 != 0) {
-                fprintf(stderr, "Error: Invalid PLTE chunk.\n");
+                fprintf(stderr, ERR_BAD_FILE);
+                return NULL;
             }
 
             png_metadata.palette = calloc(chunk_sz, sizeof(char));
@@ -146,6 +169,11 @@ RenderData *decode_png(FILE *file) {
         // Get and set background colors if defined
         if (!memcmp(chunk_type, "bKGD", 4)) {
             if (png_metadata.color_space == PNG_CS_GRAY || png_metadata.color_space == PNG_CS_GRAY_ALPHA) {
+                if (chunk_sz != 2) {
+                    fprintf(stderr, ERR_BAD_FILE);
+                    return NULL;
+                }
+
                 unsigned char bkgd_dat[chunk_sz];
                 fread(bkgd_dat, sizeof(char), chunk_sz, file);
                 png_metadata.set_bg = 1;
@@ -154,6 +182,11 @@ RenderData *decode_png(FILE *file) {
                 png_metadata.bg_color.a = UINT8_MAX;
 
             } else if (png_metadata.color_space == PNG_CS_RGB || png_metadata.color_space == PNG_CS_RGB_ALPHA) {
+                if (chunk_sz != 6) {
+                    fprintf(stderr, ERR_BAD_FILE);
+                    return NULL;
+                }
+
                 unsigned char bkgd_dat[chunk_sz];
                 fread(bkgd_dat, sizeof(char), chunk_sz, file);
                 png_metadata.set_bg = 1;
@@ -163,7 +196,11 @@ RenderData *decode_png(FILE *file) {
                 png_metadata.bg_color.b = (( bkgd_dat[4] << 8 ) | bkgd_dat[5]) >> 8;
                 png_metadata.bg_color.a = UINT8_MAX;
 
-            } else {
+            } else if (png_metadata.color_space == PNG_CS_PLTE) {
+                if (chunk_sz != 1) {
+                    fprintf(stderr, ERR_BAD_FILE);
+                    return NULL;
+                }
                 unsigned char bkgd_dat;
                 fread(&bkgd_dat, sizeof(char), chunk_sz, file);
                 png_metadata.bg_color.r = png_metadata.palette[bkgd_dat];
@@ -171,6 +208,9 @@ RenderData *decode_png(FILE *file) {
                 png_metadata.bg_color.b = png_metadata.palette[bkgd_dat + 2];
                 png_metadata.bg_color.a = UINT8_MAX;
                 // printf("r: %u, g: %u, b: %u \n", png_metadata.bg_color.r, png_metadata.bg_color.g, png_metadata.bg_color.b);
+            } else {
+                fprintf(stderr, ERR_BAD_FILE);
+                return NULL;
             }
 
 
@@ -218,8 +258,6 @@ RenderData *decode_png(FILE *file) {
     png_metadata.alpha_data = 0;
     ret = ret & load_png_colors(&png_metadata, png_metadata.alpha_data);
 
-    printf("LOADED COLORS\n");
-
     RenderData *renderData = calloc(1, sizeof(RenderData));
     renderData->color = png_metadata.pixel_color;
     renderData->width = png_metadata.width;
@@ -261,12 +299,12 @@ void _set_color(uint16_t *unfiltered,
                          : UINT16_MAX;
 
 
-            if (md->has_cicp) {
-                double lin_rgb[3] = {
-                    pq_transfer_func(&r) / BT2100_REF_WHITE, 
-                    pq_transfer_func(&g) / BT2100_REF_WHITE, 
-                    pq_transfer_func(&b) / BT2100_REF_WHITE
-                };
+            if (md->is_hdr) {
+                double lin_rgb[3] = {0};
+
+                lin_rgb[0] = (md->is_pq ? pq_transfer_func(&r) : hlg_transfer_func(&r)) / BT2100_REF_WHITE;
+                lin_rgb[1] = (md->is_pq ? pq_transfer_func(&g) : hlg_transfer_func(&g)) / BT2100_REF_WHITE; 
+                lin_rgb[2] = (md->is_pq ? pq_transfer_func(&b) : hlg_transfer_func(&b)) / BT2100_REF_WHITE;
 
                 Matrix XYZ = {lin_rgb, 1, 3};
                 Matrix result = {0};

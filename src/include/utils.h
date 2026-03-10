@@ -7,7 +7,8 @@
 #include <assert.h>
 
 
-#define ERR_BAD_FILE "Error: Could not open image; File data corrupt or invalid.\n" 
+#define ERR_BAD_FILE "\x1b[1;31mError: Could not open image; File data corrupt or invalid.\n" 
+#define WARN_BAD_DATA "\x1b[1;33mWarning: Your image was loaded improperly due to an issue. Image may look incorrect!\n"
 
 /*
  * Perceptual quantization (PQ) constants
