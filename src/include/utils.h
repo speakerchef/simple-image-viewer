@@ -20,6 +20,15 @@
 #define _C3 ( 18.6875 )
 #define _C1 ( (_C3 - _C2) + 1 )
 
+
+/*
+ * Hybrid Log Gamma (HLG) constants 
+ * as defined in Rec. ITU-R BT.2100-3
+ * */
+#define HLG_A ( 0.17883277 )
+#define HLG_B ( 1 - (4 * HLG_A) )
+#define HLG_C ( 0.5 - (HLG_A * log(4 * HLG_A)))
+
 // Utils
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
 #define MIN(a, b) ((a) < (b) ? (a) : (b))

@@ -9,9 +9,9 @@
 #include <stdlib.h>
 #include <string.h>
 
-// TODO: Handle cICP chunks
+// DONE: Handle cICP chunks
 //  - DONE: Implement Perceptual quantization (PQ) transfer function
-//  - TODO: HLG Transfer function
+//  - DONE: HLG Transfer function
 // TODO: Error handling
 // TODO: Adam7 interlacing
 // TODO: Support 1, 2, 4 bit depth color spaces
@@ -302,9 +302,26 @@ void _set_color(uint16_t *unfiltered,
             if (md->is_hdr) {
                 double lin_rgb[3] = {0};
 
-                lin_rgb[0] = (md->is_pq ? pq_transfer_func(&r) : hlg_transfer_func(&r)) / BT2100_REF_WHITE;
-                lin_rgb[1] = (md->is_pq ? pq_transfer_func(&g) : hlg_transfer_func(&g)) / BT2100_REF_WHITE; 
-                lin_rgb[2] = (md->is_pq ? pq_transfer_func(&b) : hlg_transfer_func(&b)) / BT2100_REF_WHITE;
+                lin_rgb[0] = (md->is_pq ? pq_transfer_func(&r) / BT2100_REF_WHITE : hlg_transfer_func(&r));
+                lin_rgb[1] = (md->is_pq ? pq_transfer_func(&g) / BT2100_REF_WHITE : hlg_transfer_func(&g)); 
+                lin_rgb[2] = (md->is_pq ? pq_transfer_func(&b) / BT2100_REF_WHITE : hlg_transfer_func(&b));
+
+                if (md->is_hlg) {
+                    const double Y_s = 
+                        0.2627 * lin_rgb[0] + 
+                        0.678 * lin_rgb[1] + 
+                        0.0593 * lin_rgb[2];
+
+                    _hlg_OOTF(&lin_rgb[0], &Y_s);
+                    _hlg_OOTF(&lin_rgb[1], &Y_s);
+                    _hlg_OOTF(&lin_rgb[2], &Y_s);
+
+                    double norm_const = 10000. * BT2100_REF_WHITE;
+                    lin_rgb[0] /= norm_const;
+                    lin_rgb[1] /= norm_const;
+                    lin_rgb[2] /= norm_const;
+                } 
+
 
                 Matrix XYZ = {lin_rgb, 1, 3};
                 Matrix result = {0};
@@ -314,7 +331,8 @@ void _set_color(uint16_t *unfiltered,
 
                 _matrix_mult(&XYZ, &xyz2rgb_mat, &result);
 
-                CLAMP(result.coeffs[0], 1., 0.);
+                                                                    
+                CLAMP(result.coeffs[0], 1., 0.);                    
                 CLAMP(result.coeffs[1], 1., 0.);
                 CLAMP(result.coeffs[2], 1., 0.);
 
@@ -327,7 +345,6 @@ void _set_color(uint16_t *unfiltered,
 
                 free(result.coeffs);
             }
-
         } else {
             if (md->is_plt) {
                 r = md->palette[palette_stride];
@@ -385,7 +402,7 @@ double pq_transfer_func(uint16_t *E_pr) {
     const double m2_const = (1 / _M2);
     const double m1_const = (1 / _M1);
 
-    double _max = MAX( (pow(input, m2_const) - _C1), 0 );
+    double _max = MAX( (pow(input, m2_const) - _C1), 0.);
     double _dc3 =  _C3 * pow(input, m2_const);
     double _b = fabs(_max / ( _C2 - _dc3 ));
     double Y = pow(_b, m1_const); // Linear normalized color in XYZ 
@@ -393,9 +410,24 @@ double pq_transfer_func(uint16_t *E_pr) {
     return Y;
 }
 
-double hlg_transfer_func(uint16_t *E_pr) {
-    return 1.;
+void _hlg_OOTF(double *E, const double *Y_s) {
+    double alpha = 1000.; 
+    *E = alpha * pow(*Y_s, HLG_REF_GAMMA - 1) * *E;
 }
+
+double hlg_transfer_func(uint16_t *E_pr) {
+    double res = 0;
+    double input = (double)*E_pr / UINT16_MAX;
+
+    if (input <= 0.5) {
+        res = ( input * input ) / 3.;
+    } else {
+        res = ( (exp((input - HLG_C) / HLG_A) + HLG_B) ) / 12.;
+    }
+    
+    return res;
+}
+
 
 int load_png_colors(PNG_Metadata *md, uint16_t alpha_data) {
 

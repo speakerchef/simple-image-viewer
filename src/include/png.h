@@ -35,6 +35,7 @@
 #define PNG_FILTER_PAETH 4
 
 #define REC_709_GAMMA 2.4
+#define HLG_REF_GAMMA 1.2
 // #define BT2100_REF_WHITE 0.0203
 #define BT2100_REF_WHITE 0.01
 
@@ -85,6 +86,7 @@ void _set_color(uint16_t *unfiltered, const size_t stride, PNG_Metadata *md, con
 void apply_R709_gamma(double *I);
 void apply_sRGB_gamma(double *I);
 double pq_transfer_func(uint16_t *E_pr);
+void _hlg_OOTF(double *E, const double *Y_s);
 double hlg_transfer_func(uint16_t *E_pr);
 int load_png_colors(PNG_Metadata *md, uint16_t alpha_data);
 int uncompress_png(unsigned char *input, 
