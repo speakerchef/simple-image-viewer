@@ -15,7 +15,7 @@ int main(int argc, char **argv) {
     FILE *file = fopen(path, "rb");
 
     if (!file) {
-        fprintf(stderr, "Could not open file.\n");
+        fprintf(stderr, ERR_BAD_FILE);
         return 1;
     }
 
@@ -26,7 +26,10 @@ int main(int argc, char **argv) {
 
     // Get PNG file identifier (first 8 bytes of the file)
     unsigned char identifier[8] = {0};
-    fread(identifier, 1, 8, file);
+    if (!fread(identifier, 1, 8, file)) {
+        fprintf(stderr, ERR_BAD_FILE); 
+        return 1;
+    }
 
     unsigned char __png_id[8] = {0x89, 0x50, 0x4e, 0x47,
                                  0x0d, 0x0a, 0x1a, 0x0a}; // PNG Spec ID

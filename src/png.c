@@ -9,10 +9,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-// DONE: Handle cICP chunks
-//  - DONE: Implement Perceptual quantization (PQ) transfer function
-//  - DONE: HLG Transfer function
-// TODO: Error handling
 // TODO: Adam7 interlacing
 // TODO: Support 1, 2, 4 bit depth color spaces
 // TODO: Add dynamic quant based on monitor specs
@@ -21,6 +17,8 @@
 RenderData *decode_png(FILE *file) {
 
     PNG_Metadata png_metadata = {0};
+
+    RenderData *renderData = NULL;
 
     // Process chunks
     const uint8_t CRC_SZ = 4;
@@ -57,10 +55,7 @@ RenderData *decode_png(FILE *file) {
             ret += fread(&png_metadata.filter_method, 1, 1, file);
             ret += fread(&png_metadata.interlacing, 1, 1, file);
 
-            if (ret != 13) {
-                fprintf(stderr, ERR_BAD_FILE);
-                return NULL;
-            }
+            if (ret != 13) { goto cleanup; }
 
             png_metadata.width = ntohl(png_metadata.width);
             png_metadata.height = ntohl(png_metadata.height);
@@ -106,10 +101,7 @@ RenderData *decode_png(FILE *file) {
         }
 
         if (!memcmp(chunk_type, "cICP", 4)) {
-            if (chunk_sz != 4) {
-                fprintf(stderr, ERR_BAD_FILE);
-                return NULL;
-            }
+            if (chunk_sz != 4) { goto cleanup; }
             unsigned char cicp_dat[chunk_sz]; 
             fread(cicp_dat, sizeof(char), chunk_sz, file);
 
@@ -129,10 +121,7 @@ RenderData *decode_png(FILE *file) {
                     png_metadata.is_hlg = 1;
                     break;
                 }
-                default: { 
-                    fprintf(stderr, WARN_BAD_DATA); 
-                    break;
-                }
+                default: { break; }
             }
 
             png_metadata.is_hdr = 1;
@@ -143,12 +132,10 @@ RenderData *decode_png(FILE *file) {
 
         // Extract color palette information if available
         if (!memcmp(chunk_type, "PLTE", 4)) {
-            if (chunk_sz % 3 != 0) {
-                fprintf(stderr, ERR_BAD_FILE);
-                return NULL;
-            }
+            if (chunk_sz % 3 != 0) { goto cleanup; }
 
             png_metadata.palette = calloc(chunk_sz, sizeof(char));
+            if (!png_metadata.palette) { goto cleanup; }
             fread(png_metadata.palette, sizeof(char), chunk_sz, file);
 
             fseek(file, CRC_SZ, SEEK_CUR);
@@ -158,6 +145,7 @@ RenderData *decode_png(FILE *file) {
         if (!memcmp(chunk_type, "tRNS", 4)) {
             uint8_t span = PNG_CS_PLTE ? 1 : 2; // PLTE tRNS chunk has 1 bytes sequences 
             png_metadata.transparency = calloc(1, chunk_sz);
+            if (!png_metadata.transparency) { goto cleanup; }
 
             fread(png_metadata.transparency, sizeof(char), chunk_sz, file);
             png_metadata.trns_sz = chunk_sz;
@@ -169,10 +157,7 @@ RenderData *decode_png(FILE *file) {
         // Get and set background colors if defined
         if (!memcmp(chunk_type, "bKGD", 4)) {
             if (png_metadata.color_space == PNG_CS_GRAY || png_metadata.color_space == PNG_CS_GRAY_ALPHA) {
-                if (chunk_sz != 2) {
-                    fprintf(stderr, ERR_BAD_FILE);
-                    return NULL;
-                }
+                if (chunk_sz != 2) { goto cleanup; }
 
                 unsigned char bkgd_dat[chunk_sz];
                 fread(bkgd_dat, sizeof(char), chunk_sz, file);
@@ -182,10 +167,7 @@ RenderData *decode_png(FILE *file) {
                 png_metadata.bg_color.a = UINT8_MAX;
 
             } else if (png_metadata.color_space == PNG_CS_RGB || png_metadata.color_space == PNG_CS_RGB_ALPHA) {
-                if (chunk_sz != 6) {
-                    fprintf(stderr, ERR_BAD_FILE);
-                    return NULL;
-                }
+                if (chunk_sz != 6) { goto cleanup; }
 
                 unsigned char bkgd_dat[chunk_sz];
                 fread(bkgd_dat, sizeof(char), chunk_sz, file);
@@ -197,10 +179,7 @@ RenderData *decode_png(FILE *file) {
                 png_metadata.bg_color.a = UINT8_MAX;
 
             } else if (png_metadata.color_space == PNG_CS_PLTE) {
-                if (chunk_sz != 1) {
-                    fprintf(stderr, ERR_BAD_FILE);
-                    return NULL;
-                }
+                if (chunk_sz != 1) { goto cleanup; }
                 unsigned char bkgd_dat;
                 fread(&bkgd_dat, sizeof(char), chunk_sz, file);
                 png_metadata.bg_color.r = png_metadata.palette[bkgd_dat];
@@ -208,10 +187,7 @@ RenderData *decode_png(FILE *file) {
                 png_metadata.bg_color.b = png_metadata.palette[bkgd_dat + 2];
                 png_metadata.bg_color.a = UINT8_MAX;
                 // printf("r: %u, g: %u, b: %u \n", png_metadata.bg_color.r, png_metadata.bg_color.g, png_metadata.bg_color.b);
-            } else {
-                fprintf(stderr, ERR_BAD_FILE);
-                return NULL;
-            }
+            } else { goto cleanup; }
 
 
             fseek(file, CRC_SZ, SEEK_CUR);
@@ -222,6 +198,7 @@ RenderData *decode_png(FILE *file) {
         if (!memcmp(chunk_type, "IDAT", 4)) {
             png_metadata.image_data = realloc( png_metadata.image_data,
                                               png_metadata.total_size + chunk_sz);
+            if (!png_metadata.image_data) { goto cleanup; }
 
             fread(png_metadata.image_data + png_metadata.total_size, 
                   1,
@@ -238,6 +215,7 @@ RenderData *decode_png(FILE *file) {
             break;
         }
 
+
         fseek(file, chunk_sz + CRC_SZ, SEEK_CUR);
     }
 
@@ -250,15 +228,17 @@ RenderData *decode_png(FILE *file) {
                          (scanline_size + 1); // +1 to account for filter byte
 
     unsigned char *output_buffer = calloc(output_size, sizeof(unsigned char));
+    if (!output_buffer) { goto cleanup; }
 
-    int ret =
-        uncompress_png(png_metadata.image_data, output_buffer,
+    int ret = uncompress_png(png_metadata.image_data, output_buffer,
                        png_metadata.total_size, output_size, &png_metadata);
 
     png_metadata.alpha_data = 0;
     ret = ret & load_png_colors(&png_metadata, png_metadata.alpha_data);
+    if (ret) { goto cleanup; }
 
-    RenderData *renderData = calloc(1, sizeof(RenderData));
+    renderData = calloc(1, sizeof(RenderData));
+    if (!renderData) { goto cleanup; }
     renderData->color = png_metadata.pixel_color;
     renderData->width = png_metadata.width;
     renderData->height = png_metadata.height;
@@ -268,10 +248,12 @@ RenderData *decode_png(FILE *file) {
     renderData->set_bg = png_metadata.set_bg;
     renderData->ret = ret;
 
-    free(png_metadata.palette);
-    free(png_metadata.image_data);
+    cleanup:
+        free(png_metadata.palette);
+        free(png_metadata.transparency);
+        free(png_metadata.image_data);
+        return renderData;
 
-    return renderData;
 }
 
 void _set_color(uint16_t *unfiltered, 
@@ -328,6 +310,7 @@ void _set_color(uint16_t *unfiltered,
                 result.rows = XYZ.rows;
                 result.cols = xyz2rgb_mat.cols;
                 result.coeffs = malloc(sizeof(double) * (result.rows * result.cols));
+                if (!result.coeffs) { exit(1); }
 
                 _matrix_mult(&XYZ, &xyz2rgb_mat, &result);
 
@@ -441,9 +424,12 @@ int load_png_colors(PNG_Metadata *md, uint16_t alpha_data) {
     else { alloc_sz = sizeof(ColorData16); }
 
     md->pixel_color = calloc(md->width * md->height, alloc_sz);
+    if (!md->pixel_color) { return 1; }
+
     size_t stride = md->width * md->num_channels * md->bytes_per_channel;
     size_t scanline_width = stride + 1;
     uint16_t *unfiltered = calloc(md->height * stride, sizeof(uint16_t));
+    if (!unfiltered) { return 1; }
 
     for (size_t y = 0; y < md->height; y++) {
         unfilter_png(md->image_data[y * scanline_width], // Filter type
