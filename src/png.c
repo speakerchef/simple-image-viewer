@@ -11,6 +11,8 @@
 
 // TODO: Support 1, 2, 4 bit depth color spaces
 // TODO: Gamma gAMA chunk handling
+// TODO: iCCP Chunk
+// TODO: sRGB chunk
 
 RenderData *decode_png(FILE *file) {
 
@@ -126,6 +128,26 @@ RenderData *decode_png(FILE *file) {
 
             fseek(file, CRC_SZ, SEEK_CUR);
             continue;
+        }
+
+        if (!memcmp(chunk_type, "iCCP", 4)) {
+        }
+
+        if (!memcmp(chunk_type, "gAMA", 4)) {
+            if (png_metadata.is_hdr) {
+                fseek(file, CRC_SZ, SEEK_CUR); 
+                continue;
+            }
+            if (chunk_sz != 4) { goto cleanup; }
+ 
+            unsigned char gamma[4] = {0};
+            fread(gamma, chunk_sz, 1, file);
+
+            printf("gAMA chunk data: %s \n", gamma);
+
+            fseek(file, CRC_SZ, SEEK_CUR);
+            continue;
+
         }
 
         // Extract color palette information if available

@@ -60,11 +60,7 @@ int main(int argc, char **argv) {
     int x = renderData->width;
     int y = renderData->height;
     
-
-
     SDL_Window *window = SDL_CreateWindow("Image Viewer", x, y, 0);
-
-
 
     if (window) {
 
@@ -73,11 +69,15 @@ int main(int argc, char **argv) {
         const SDL_DisplayMode *display_mode = SDL_GetCurrentDisplayMode(display_id[0]);
         SDL_free(display_id);
 
-        if (renderData->width >= (MAX_RENDER_RATIO * display_mode->w) || 
-            renderData->height >= (MAX_RENDER_RATIO * display_mode->h)) {
-            x = floor(x * MAX_RENDER_RATIO);
-            y = floor(y * MAX_RENDER_RATIO);
-        }
+        if (renderData->width >= MAX_RENDER_RATIO * display_mode->w || 
+            renderData->height >= MAX_RENDER_RATIO * display_mode->h) {
+
+            float scale = MIN(MAX_RENDER_RATIO * display_mode->h / y, MAX_RENDER_RATIO * display_mode->w / x);
+
+            x = floor(x * scale);
+            y = floor(y * scale);
+
+        } 
 
         SDL_SetWindowSize(window, x, y);
 
