@@ -2,6 +2,7 @@
 #include "include/utils.h"
 #include <stddef.h>
 #include <stdint.h>
+#include <math.h>
 #include <stdio.h>
 #include <SDL3/SDL_render.h>
 
@@ -56,28 +57,41 @@ int main(int argc, char **argv) {
 
     printf("RENDER DATA IS: w:%u  h:%u \n", renderData->width, renderData->height);
 
-    uint32_t x = renderData->width;
-    uint32_t y = renderData->height;
-
+    int x = renderData->width;
+    int y = renderData->height;
+    
 
 
     SDL_Window *window = SDL_CreateWindow("Image Viewer", x, y, 0);
-    SDL_SetWindowPosition(window,
-                          SDL_WINDOWPOS_CENTERED,
-                          SDL_WINDOWPOS_CENTERED
-                        );
 
 
 
     if (window) {
 
+        SDL_SetWindowResizable(window, true);
+        SDL_DisplayID *display_id = SDL_GetDisplays(NULL);
+        const SDL_DisplayMode *display_mode = SDL_GetCurrentDisplayMode(display_id[0]);
+        SDL_free(display_id);
+
+        if (renderData->width >= (MAX_RENDER_RATIO * display_mode->w) || 
+            renderData->height >= (MAX_RENDER_RATIO * display_mode->h)) {
+            x = floor(x * MAX_RENDER_RATIO);
+            y = floor(y * MAX_RENDER_RATIO);
+        }
+
+        SDL_SetWindowSize(window, x, y);
+
+        SDL_SetWindowPosition(window,
+                              SDL_WINDOWPOS_CENTERED,
+                              SDL_WINDOWPOS_CENTERED
+                              );
         bool isRunning = true;
         SDL_Event event;
         int pixel_format = SDL_PIXELFORMAT_RGBA64;
-        int pitch = x * 8;
+        int pitch = renderData->width * 8;
 
         SDL_Renderer *renderer = SDL_CreateRenderer(window, NULL);
-        SDL_Surface *surface = SDL_CreateSurfaceFrom(x, y, pixel_format, renderData->color, pitch);
+        SDL_Surface *surface = SDL_CreateSurfaceFrom(renderData->width, renderData->height, pixel_format, renderData->color, pitch);
         SDL_SetSurfaceColorspace(surface, SDL_COLORSPACE_SRGB_LINEAR);
 
         if (surface == NULL) {

@@ -38,6 +38,9 @@
     if ((a) < (min)) (a) = (min); \
 })
 
+
+#define MAX_RENDER_RATIO 0.60
+
 typedef struct ColorDataF {
     float r;
     float g;

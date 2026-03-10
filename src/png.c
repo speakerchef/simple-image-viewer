@@ -9,9 +9,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-// TODO: Adam7 interlacing
 // TODO: Support 1, 2, 4 bit depth color spaces
-// TODO: Add dynamic quant based on monitor specs
 // TODO: Gamma gAMA chunk handling
 
 RenderData *decode_png(FILE *file) {
@@ -32,13 +30,13 @@ RenderData *decode_png(FILE *file) {
             break;
 
         chunk_sz = ntohl(chunk_sz); // Big to little endian
-        // printf("Size of chunk is: %u, ", chunk_sz);
+        printf("Size of chunk is: %u, ", chunk_sz);
 
-        // printf("Chunk type is: ");
-        // for (int i = 0; i < 4; i++) {
-        //     printf("%c", chunk_type[i]);
-        // }
-        // printf(" \n");
+        printf("Chunk type is: ");
+        for (int i = 0; i < 4; i++) {
+            printf("%c", chunk_type[i]);
+        }
+        printf(" \n");
 
         // Extract image size
         if (!memcmp(chunk_type, "IHDR", 4)) {
@@ -107,10 +105,10 @@ RenderData *decode_png(FILE *file) {
 
             if (cicp_dat[0] != 0x09) { fprintf(stderr, WARN_BAD_DATA); }
 
-            // for (size_t i = 0; i < chunk_sz; i++) {
-            //     printf("%02x ", cicp_dat[i]); 
-            // }
-            // printf("\n");
+            for (size_t i = 0; i < chunk_sz; i++) {
+                printf("%02x ", cicp_dat[i]); 
+            }
+            printf("\n");
 
             switch (cicp_dat[1]){
                 case 0x10: {
