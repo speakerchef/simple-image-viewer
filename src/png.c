@@ -11,8 +11,8 @@
 
 // TODO: Support 1, 2, 4 bit depth color spaces
 // TODO: Gamma gAMA chunk handling
+// BOOM
 // TODO: Color space data from eXif chunk
-// TODO: sRGB chunk
 
 RenderData *decode_png(FILE *file) {
 
@@ -32,13 +32,13 @@ RenderData *decode_png(FILE *file) {
             break;
 
         chunk_sz = ntohl(chunk_sz); // Big to little endian
-        // printf("Size of chunk is: %u, ", chunk_sz);
-        //
-        // printf("Chunk type is: ");
-        // for (int i = 0; i < 4; i++) {
-        //     printf("%c", chunk_type[i]);
-        // }
-        // printf(" \n");
+        printf("Size of chunk is: %u, ", chunk_sz);
+
+        printf("Chunk type is: ");
+        for (int i = 0; i < 4; i++) {
+            printf("%c", chunk_type[i]);
+        }
+        printf(" \n");
 
         // Extract image size
         if (!memcmp(chunk_type, "IHDR", 4)) {
@@ -132,6 +132,11 @@ RenderData *decode_png(FILE *file) {
         }
 
         if (!memcmp(chunk_type, "iCCP", 4)) {
+            /*
+             * Full iCCP support from scratch
+             * is beyond the scope of this project
+             * and will use lcms-2 eventually
+             */
             if (png_metadata.is_hdr) {
                 fseek(file, CRC_SZ, SEEK_CUR); 
                 continue;
@@ -149,8 +154,50 @@ RenderData *decode_png(FILE *file) {
                 fprintf(stderr, WARN_NO_SUPPORT);
             }
             png_metadata.is_srgb = 1;
+            png_metadata.has_iccp = 1;
 
             fseek(file, chunk_sz - counter - 1 + CRC_SZ, SEEK_CUR);
+            continue;
+        }
+
+        if (!memcmp(chunk_type, "sRGB", 4)) {
+            if (png_metadata.is_hdr || png_metadata.has_iccp) {
+                goto cleanup;
+            }
+            if (chunk_sz != 1) { goto cleanup; }
+
+            unsigned char srgb_type;
+            fread(&srgb_type, sizeof(char), chunk_sz, file);
+
+            switch (srgb_type) {
+                case SRGB_PERCEPT: {
+                    png_metadata.srgb_type = SRGB_PERCEPT;
+                    break;
+                }
+                case SRGB_REL_COLOR: {
+                    png_metadata.srgb_type = SRGB_REL_COLOR;
+                    break;
+                }
+                case SRGB_SATURATION: {
+                    png_metadata.srgb_type = SRGB_SATURATION;
+                    break;
+                }
+                case SRGB_ABS_COLOR: {
+                    png_metadata.srgb_type = SRGB_ABS_COLOR;
+                    break;
+                }
+                default: {
+                    png_metadata.srgb_type = -1;
+                    fprintf(stderr, WARN_BAD_DATA);
+                    break;
+                }
+            }
+
+            png_metadata.is_srgb = 1;
+
+            printf("sRGB Type: 0x%02x; 0d%u\n", srgb_type, srgb_type);
+
+            fseek(file, CRC_SZ, SEEK_CUR);
             continue;
         }
 
@@ -392,7 +439,6 @@ void _set_color(uint16_t *unfiltered,
                              : UINT16_MAX;
             }
 
-            // printf("In color");
             r <<= 8;
             g <<= 8;
             b <<= 8;

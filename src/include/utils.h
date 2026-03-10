@@ -40,7 +40,7 @@
 })
 
 
-#define MAX_RENDER_RATIO 0.60
+#define MAX_RENDER_RATIO 0.9
 
 typedef struct ColorDataF {
     float r;

@@ -27,6 +27,13 @@
 #define PNG_CS_GRAY_ALPHA 4
 #define PNG_CS_RGB_ALPHA 6
 
+// sRGB types
+#define SRGB_PERCEPT 0
+#define SRGB_REL_COLOR 1
+#define SRGB_SATURATION 2
+#define SRGB_ABS_COLOR 3
+
+
 // PNG filter types
 #define PNG_FILTER_NONE 0
 #define PNG_FILTER_SUB 1
@@ -67,7 +74,9 @@ typedef struct PNG_Metadata {
     bool is_hdr;
     bool is_pq;
     bool is_hlg;
+    bool has_iccp;
     bool is_srgb;
+    int8_t srgb_type;
 } PNG_Metadata;
 
 // Calculated using BT 2020 and Rec. 709
