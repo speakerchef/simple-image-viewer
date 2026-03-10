@@ -9,6 +9,7 @@
 
 #define ERR_BAD_FILE "\x1b[1;31mError: Could not open image; File data corrupt or invalid.\n" 
 #define WARN_BAD_DATA "\x1b[1;33mWarning: Your image was loaded improperly due to an issue. Image may look incorrect!\n"
+#define WARN_NO_SUPPORT "\x1b[1;33mWarning: Some features from your image are unsupported and may result in a slightly different appearance.\n"
 
 /*
  * Perceptual quantization (PQ) constants
@@ -71,6 +72,7 @@ typedef struct RenderData {
     uint8_t bytes_per_channel;
     uint8_t num_channels;
     bool set_bg;
+    bool is_srgb;
     int ret;
 } RenderData;
 

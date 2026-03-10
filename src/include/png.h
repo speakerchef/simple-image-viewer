@@ -67,6 +67,7 @@ typedef struct PNG_Metadata {
     bool is_hdr;
     bool is_pq;
     bool is_hlg;
+    bool is_srgb;
 } PNG_Metadata;
 
 // Calculated using BT 2020 and Rec. 709

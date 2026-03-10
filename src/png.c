@@ -11,7 +11,7 @@
 
 // TODO: Support 1, 2, 4 bit depth color spaces
 // TODO: Gamma gAMA chunk handling
-// TODO: iCCP Chunk
+// TODO: Color space data from eXif chunk
 // TODO: sRGB chunk
 
 RenderData *decode_png(FILE *file) {
@@ -32,19 +32,20 @@ RenderData *decode_png(FILE *file) {
             break;
 
         chunk_sz = ntohl(chunk_sz); // Big to little endian
-        printf("Size of chunk is: %u, ", chunk_sz);
-
-        printf("Chunk type is: ");
-        for (int i = 0; i < 4; i++) {
-            printf("%c", chunk_type[i]);
-        }
-        printf(" \n");
+        // printf("Size of chunk is: %u, ", chunk_sz);
+        //
+        // printf("Chunk type is: ");
+        // for (int i = 0; i < 4; i++) {
+        //     printf("%c", chunk_type[i]);
+        // }
+        // printf(" \n");
 
         // Extract image size
         if (!memcmp(chunk_type, "IHDR", 4)) {
             /*
              * Read in metadata, note h,w,
              * */
+
 
             size_t ret = 0;
             ret += fread(&png_metadata.width, 1, 4, file);
@@ -131,6 +132,26 @@ RenderData *decode_png(FILE *file) {
         }
 
         if (!memcmp(chunk_type, "iCCP", 4)) {
+            if (png_metadata.is_hdr) {
+                fseek(file, CRC_SZ, SEEK_CUR); 
+                continue;
+            }
+            unsigned char *dat = calloc(1, chunk_sz);
+            if (!dat) { goto cleanup; }
+            size_t counter = 0;
+            while (fread(&dat[counter], 1, 1, file) && counter < 4) {
+                // printf("%c", dat[counter]);
+                counter++;
+            }
+            // printf("\n");
+            
+            if (memcmp(dat, "sRGB", 4)) {
+                fprintf(stderr, WARN_NO_SUPPORT);
+            }
+            png_metadata.is_srgb = 1;
+
+            fseek(file, chunk_sz - counter - 1 + CRC_SZ, SEEK_CUR);
+            continue;
         }
 
         if (!memcmp(chunk_type, "gAMA", 4)) {
@@ -266,6 +287,7 @@ RenderData *decode_png(FILE *file) {
     renderData->num_channels = png_metadata.num_channels;
     renderData->bg_color = png_metadata.bg_color;
     renderData->set_bg = png_metadata.set_bg;
+    renderData->is_srgb = png_metadata.is_srgb;
     renderData->ret = ret;
 
     cleanup:
@@ -334,6 +356,13 @@ void _set_color(uint16_t *unfiltered,
 
                 _matrix_mult(&XYZ, &xyz2rgb_mat, &result);
 
+                // apply_R709_gamma(&result.coeffs[0]);
+                // apply_R709_gamma(&result.coeffs[1]);
+                // apply_R709_gamma(&result.coeffs[2]);
+                // apply_sRGB_gamma(&result.coeffs[0]);
+                // apply_sRGB_gamma(&result.coeffs[1]);
+                // apply_sRGB_gamma(&result.coeffs[2]);
+
                                                                     
                 CLAMP(result.coeffs[0], 1., 0.);                    
                 CLAMP(result.coeffs[1], 1., 0.);
@@ -363,9 +392,11 @@ void _set_color(uint16_t *unfiltered,
                              : UINT16_MAX;
             }
 
+            // printf("In color");
             r <<= 8;
             g <<= 8;
             b <<= 8;
+            a <<= 8;
         }
 
         if (md->is_gray) {
@@ -389,6 +420,11 @@ void apply_R709_gamma(double *I) {
 void apply_sRGB_gamma(double *I) {
     *I = MIN(1., *I);
     *I = MAX(0., *I);
+    // if (*I / 12.92 <= 0.0031308) {
+    //     *I = *I / 12.92;
+    // } else {
+    //     *I = pow(((*I + 0.055) / 1.055), 1.0 / REC_709_GAMMA);
+    // }
     if (*I <= 0.0031308) {
         *I = 12.92 * *I;
     } else {
@@ -586,9 +622,7 @@ int __filter_avg(PNG_Metadata *md, uint16_t *unfiltered, const size_t row_idx) {
                 : 0;
         uint32_t prev_b = row_idx ? unfiltered[(row_idx - 1) * stride + x] : 0;
 
-        unfiltered[row_idx * stride + x] = md->image_data[offset] +
-                (uint16_t)(floor((float)(prev_a + prev_b) / 2)) &
-            0xFF;
+        unfiltered[row_idx * stride + x] = (uint32_t)(md->image_data[offset] + floor((float)(prev_a + prev_b) / 2)) & 0xFF;
     }
 
     return 0;

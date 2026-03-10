@@ -55,7 +55,6 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    printf("RENDER DATA IS: w:%u  h:%u \n", renderData->width, renderData->height);
 
     int x = renderData->width;
     int y = renderData->height;
@@ -92,7 +91,10 @@ int main(int argc, char **argv) {
 
         SDL_Renderer *renderer = SDL_CreateRenderer(window, NULL);
         SDL_Surface *surface = SDL_CreateSurfaceFrom(renderData->width, renderData->height, pixel_format, renderData->color, pitch);
-        SDL_SetSurfaceColorspace(surface, SDL_COLORSPACE_SRGB_LINEAR);
+
+        if (!renderData->is_srgb) {
+            SDL_SetSurfaceColorspace(surface, SDL_COLORSPACE_SRGB_LINEAR);
+        }
 
         if (surface == NULL) {
             SDL_Log("CreateRGBSurface failed: %s", SDL_GetError());
