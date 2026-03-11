@@ -5,12 +5,15 @@ A lightweight image viewer built from scratch in C using SDL3 for rendering. The
 **Full PNG spec can be found here: https://www.w3.org/TR/png-3/
 
 ## Supported Formats
-- PNG (In-Progress: ~75%): I implement most of the important elements in the full PNG spec; certain niche and obscure ancillary chunks will not be implemented for obvious reasons.
-  - Can view PLTE, RGB, RGBA, Grayscale, and Grayscale+Alpha images with full transparency and background color support
-  - 8-bit and 16-bit channel depth support
+- **PNG**: Full support for the most common and important elements of the PNG spec. Certain niche ancillary chunks (iTXt, sPLT, etc.) are not implemented.
+  - All standard color types: Grayscale, RGB, Palette, Grayscale+Alpha, RGBA
+  - 8-bit and 16-bit channel depth
   - All 5 scanline filter types (None, Sub, Up, Average, Paeth)
-  - HDR support via cICP chunks — BT.2100 Perceptual Quantization (PQ) and Hybrid Log-Gamma (HLG) transfer functions with BT.2020 to BT.709 gamut mapping
-  - Interlacing, sub-8 bit depth, and dynamic color quantization still yet to be implemented
+  - Full transparency (tRNS) and background color (bKGD) support
+  - HDR via cICP — BT.2100 PQ and HLG transfer functions with BT.2020 to BT.709 gamut mapping
+  - sRGB and iCCP chunk detection with color space priority handling
+  - Automatic display scaling with aspect ratio preservation
+  - **Not supported:** Adam7 interlacing, sub-8 bit depth, gAMA chunk application
 - (maybe) JPG
 - (maybe) BMP
 
@@ -22,7 +25,8 @@ The PNG decoder handles the full pipeline from raw file to rendered pixels:
 - IDAT chunk concatenation and zlib decompression
 - All 5 scanline filter types: None, Sub, Up, Average, Paeth
 - Color type support for grayscale, RGB, indexed, and alpha variants at 8 and 16 bits per channel
-- Ancillary chunk handling: bKGD (background color), tRNS (transparency), cICP (HDR color information)
+- Ancillary chunk handling: bKGD, tRNS, cICP, sRGB, iCCP(partial), gAMA(only detection)
+- Color space priority: iCCP > sRGB > cICP > gAMA (per PNG spec)
 
 ## HDR Support
 
