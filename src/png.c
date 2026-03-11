@@ -133,7 +133,7 @@ RenderData *decode_png(FILE *file) {
              * and will use lcms-2 eventually
              */
             if (png_metadata.is_hdr) {
-                fseek(file, CRC_SZ, SEEK_CUR); 
+                fseek(file, chunk_sz + CRC_SZ, SEEK_CUR); 
                 continue;
             }
             unsigned char *dat = calloc(1, chunk_sz);
@@ -157,7 +157,8 @@ RenderData *decode_png(FILE *file) {
 
         if (!memcmp(chunk_type, "sRGB", 4)) {
             if (png_metadata.is_hdr || png_metadata.has_iccp) {
-                goto cleanup;
+                fseek(file, chunk_sz + CRC_SZ, SEEK_CUR);
+                continue;
             }
             if (chunk_sz != 1) { goto cleanup; }
 
@@ -198,7 +199,7 @@ RenderData *decode_png(FILE *file) {
 
         if (!memcmp(chunk_type, "gAMA", 4)) {
             if (png_metadata.is_hdr) {
-                fseek(file, CRC_SZ, SEEK_CUR); 
+                fseek(file, chunk_sz + CRC_SZ, SEEK_CUR); 
                 continue;
             }
             if (chunk_sz != 4) { goto cleanup; }
