@@ -119,6 +119,10 @@ int main(int argc, char **argv) {
         const int min_w = MIN_SCREEN_SIZE_RATIO * display_mode->w;
         const int min_h = MIN_SCREEN_SIZE_RATIO * display_mode->h;
         SDL_SetWindowMinimumSize(window, min_w, min_h);
+        
+        // Maintain image aspect ratio
+        // resize.
+        SDL_SetRenderLogicalPresentation(renderer, x, y, SDL_LOGICAL_PRESENTATION_LETTERBOX);
 
         while (isRunning) {
 
@@ -136,9 +140,6 @@ int main(int argc, char **argv) {
             int cur_x, cur_y = 0;
             SDL_GetWindowSize(window, &cur_x, &cur_y);
             
-            // Maintain image aspect ratio
-            // resize.
-            SDL_SetRenderLogicalPresentation(renderer, x, y, SDL_LOGICAL_PRESENTATION_LETTERBOX);
 
             if (renderData->set_bg) {
                 SDL_SetRenderDrawColor(renderer, 
@@ -149,7 +150,7 @@ int main(int argc, char **argv) {
             }
             SDL_RenderClear(renderer);
             SDL_RenderTexture(renderer, texture, NULL, NULL);
-            SDL_SetRenderVSync(renderer, 1);
+            SDL_SetRenderVSync(renderer, 60);
             SDL_RenderPresent(renderer);
 
         }
