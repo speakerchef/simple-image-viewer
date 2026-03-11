@@ -28,13 +28,13 @@ RenderData *decode_png(FILE *file) {
             break;
 
         chunk_sz = ntohl(chunk_sz); // Big to little endian
-        // printf("Size of chunk is: %u, ", chunk_sz);
-        //
-        // printf("Chunk type is: ");
-        // for (int i = 0; i < 4; i++) {
-        //     printf("%c", chunk_type[i]);
-        // }
-        // printf(" \n");
+        printf("Size of chunk is: %u, ", chunk_sz);
+
+        printf("Chunk type is: ");
+        for (int i = 0; i < 4; i++) {
+            printf("%c", chunk_type[i]);
+        }
+        printf(" \n");
 
         // Extract image size
         if (!memcmp(chunk_type, "IHDR", 4)) {
@@ -139,11 +139,11 @@ RenderData *decode_png(FILE *file) {
             unsigned char *dat = calloc(1, chunk_sz);
             if (!dat) { goto cleanup; }
             size_t counter = 0;
-            while (fread(&dat[counter], 1, 1, file) && counter < 4) {
-                // printf("%c", dat[counter]);
+            while (fread(&dat[counter], 1, 1, file) && dat[counter] != '\0') {
+                printf("%c", dat[counter]);
                 counter++;
             }
-            // printf("\n");
+            printf("\n");
             
             if (memcmp(dat, "sRGB", 4)) {
                 fprintf(stderr, WARN_NO_SUPPORT);
@@ -318,7 +318,7 @@ RenderData *decode_png(FILE *file) {
                        png_metadata.total_size, output_size, &png_metadata);
 
     png_metadata.alpha_data = 0;
-    ret = ret & load_png_colors(&png_metadata, png_metadata.alpha_data);
+    ret = ret & load_png_colors(&png_metadata);
     if (ret) { goto cleanup; }
 
     renderData = calloc(1, sizeof(RenderData));
@@ -417,13 +417,13 @@ void _set_color(uint16_t *unfiltered,
                 g = md->palette[palette_stride + 1];
                 b = md->palette[palette_stride + 2];
                 a = ( index < md->trns_sz ) ? md->transparency[index]
-                                            : UINT16_MAX;
+                                            : UINT8_MAX;
             } else {
                 r = unfiltered[offset];
                 g = unfiltered[offset + 1];
                 b = unfiltered[offset + 2];
                 a = md->is_alpha ? unfiltered[offset + 3]
-                             : UINT16_MAX;
+                             : UINT8_MAX;
             }
 
             r <<= 8;
@@ -437,6 +437,7 @@ void _set_color(uint16_t *unfiltered,
         } else {
             md->pixel_color[y * md->width + x] = (ColorData16){r, g, b, a};
         }
+
 
     }
 }
@@ -501,18 +502,14 @@ double hlg_transfer_func(uint16_t *E_pr) {
 }
 
 
-int load_png_colors(PNG_Metadata *md, uint16_t alpha_data) {
+int load_png_colors(PNG_Metadata *md) {
 
     if (md->width < 1 || md->height < 1 || md->num_channels < 1) {
         fprintf(stderr, ERR_BAD_FILE);
         return 1;
     }
 
-    size_t alloc_sz = 0;
-    if (md->bit_depth <= 8) { alloc_sz = sizeof(ColorData8); }
-    else { alloc_sz = sizeof(ColorData16); }
-
-    md->pixel_color = calloc(md->width * md->height, alloc_sz);
+    md->pixel_color = calloc(md->width * md->height, sizeof(ColorData16));
     if (!md->pixel_color) { return 1; }
 
     size_t stride = md->width * md->num_channels * md->bytes_per_channel;

@@ -98,7 +98,7 @@ void apply_sRGB_gamma(double *I);
 double pq_transfer_func(uint16_t *E_pr);
 void _hlg_OOTF(double *E, const double *Y_s);
 double hlg_transfer_func(uint16_t *E_pr);
-int load_png_colors(PNG_Metadata *md, uint16_t alpha_data);
+int load_png_colors(PNG_Metadata *md);
 int uncompress_png(unsigned char *input, 
                    unsigned char *output, 
                    const size_t in_buf_size, 
