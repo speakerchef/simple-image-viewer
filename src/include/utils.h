@@ -6,6 +6,8 @@
 #include <SDL3/SDL.h>
 #include <assert.h>
 
+static const unsigned char _png_id[8] = {0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a}; // PNG Spec ID
+static const unsigned char _jpeg_id[2] = {0xff, 0xd8}; // JPEG SOI Marker
 
 #define ERR_BAD_FILE "\x1b[1;31mError: Could not open image; File data corrupt or invalid.\n" 
 #define WARN_BAD_DATA "\x1b[1;33mWarning: Your image was loaded improperly due to an issue. Image may look incorrect!\n"

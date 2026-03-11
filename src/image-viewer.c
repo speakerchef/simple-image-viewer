@@ -1,10 +1,12 @@
 #include "include/png.h"
+#include "include/jpeg.h"
 #include "include/utils.h"
 #include <stddef.h>
 #include <stdint.h>
 #include <math.h>
 #include <stdio.h>
 #include <SDL3/SDL_render.h>
+#include <string.h>
 
 int main(int argc, char **argv) {
     if (argc != 2) {
@@ -25,28 +27,44 @@ int main(int argc, char **argv) {
     size_t file_sz = ftell(file);
     fseek(file, 0, SEEK_SET);
 
+
     // Get PNG file identifier (first 8 bytes of the file)
-    unsigned char identifier[8] = {0};
-    if (!fread(identifier, 1, 8, file)) {
-        fprintf(stderr, ERR_BAD_FILE); 
-        return 1;
+    unsigned char png_identifier[8] = {0};
+    unsigned char jpeg_identifier[2] = {0};
+    // if (!fread(png_identifier, 1, 8, file)) {
+    //     fprintf(stderr, ERR_BAD_FILE); 
+    //     return 1;
+    // }
+
+    fread(png_identifier, 1, 8, file);
+    fseek(file, 0, SEEK_SET);
+    fread(jpeg_identifier, 1, 2, file);
+    bool is_PNG = !(memcmp(png_identifier, _png_id, 8));
+    bool is_JPEG = !(memcmp(jpeg_identifier, _jpeg_id, 2));
+    // printf("Is PNG: %d, is JPEG: %d\n", is_PNG, is_JPEG);
+
+    printf("Identifier: ");
+    for (size_t i = 0; i < 2; i++) {
+        printf("%02X ", jpeg_identifier[i]);
     }
+    printf("\n");
 
-    unsigned char __png_id[8] = {0x89, 0x50, 0x4e, 0x47,
-                                 0x0d, 0x0a, 0x1a, 0x0a}; // PNG Spec ID
-
-    bool is_PNG = !(memcmp(identifier, __png_id, 8));
-
-    fseek(file, 8, SEEK_SET); // Skip past ID to data chunks
 
     RenderData *renderData = NULL;
 
-    if (is_PNG) { renderData = decode_png(file); }
-
-    if (!renderData) {
-        fprintf(stderr, ERR_BAD_FILE);
-        return 1;
+    if (is_PNG) {
+        fseek(file, 8, SEEK_SET); // Skip past ID
+        renderData = decode_png(file); 
     }
+    if (is_JPEG) {
+        int res = decode_jpeg(file, file_sz); 
+    }
+
+
+    // if (!renderData) {
+    //     fprintf(stderr, ERR_BAD_FILE);
+    //     return 1;
+    // }
 
     fclose(file);
 

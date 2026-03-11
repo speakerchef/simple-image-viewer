@@ -8,7 +8,7 @@ find_package(SDL3 REQUIRED)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/$<CONFIGURATION>")
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/$<CONFIGURATION>")
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
-# set(CMAKE_BUILD_TYPE Debug)
+set(CMAKE_BUILD_TYPE Debug)
 
 # This assumes the SDL source is available in vendored/SDL
 # add_subdirectory(vendored/SDL EXCLUDE_FROM_ALL)
@@ -16,6 +16,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 add_executable(image-viewer WIN32 
 ./src/image-viewer.c
 ./src/png.c
+./src/jpeg.c
 ./src/utils.c
 )
 
