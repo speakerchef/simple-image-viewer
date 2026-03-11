@@ -9,10 +9,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-// TODO: Support 1, 2, 4 bit depth color spaces
-// TODO: Gamma gAMA chunk handling
-// BOOM
-// TODO: Color space data from eXif chunk
 
 RenderData *decode_png(FILE *file) {
 
@@ -32,20 +28,19 @@ RenderData *decode_png(FILE *file) {
             break;
 
         chunk_sz = ntohl(chunk_sz); // Big to little endian
-        printf("Size of chunk is: %u, ", chunk_sz);
-
-        printf("Chunk type is: ");
-        for (int i = 0; i < 4; i++) {
-            printf("%c", chunk_type[i]);
-        }
-        printf(" \n");
+        // printf("Size of chunk is: %u, ", chunk_sz);
+        //
+        // printf("Chunk type is: ");
+        // for (int i = 0; i < 4; i++) {
+        //     printf("%c", chunk_type[i]);
+        // }
+        // printf(" \n");
 
         // Extract image size
         if (!memcmp(chunk_type, "IHDR", 4)) {
             /*
              * Read in metadata, note h,w,
              * */
-
 
             size_t ret = 0;
             ret += fread(&png_metadata.width, 1, 4, file);
@@ -108,10 +103,10 @@ RenderData *decode_png(FILE *file) {
 
             if (cicp_dat[0] != 0x09) { fprintf(stderr, WARN_BAD_DATA); }
 
-            for (size_t i = 0; i < chunk_sz; i++) {
-                printf("%02x ", cicp_dat[i]); 
-            }
-            printf("\n");
+            // for (size_t i = 0; i < chunk_sz; i++) {
+            //     printf("%02x ", cicp_dat[i]); 
+            // }
+            // printf("\n");
 
             switch (cicp_dat[1]){
                 case 0x10: {
@@ -195,7 +190,7 @@ RenderData *decode_png(FILE *file) {
 
             png_metadata.is_srgb = 1;
 
-            printf("sRGB Type: 0x%02x; 0d%u\n", srgb_type, srgb_type);
+            // printf("sRGB Type: 0x%02x; 0d%u\n", srgb_type, srgb_type);
 
             fseek(file, CRC_SZ, SEEK_CUR);
             continue;
@@ -211,12 +206,13 @@ RenderData *decode_png(FILE *file) {
             unsigned char gamma[4] = {0};
             fread(gamma, chunk_sz, 1, file);
 
-            printf("gAMA chunk data: %s \n", gamma);
+            // printf("gAMA chunk data: %s \n", gamma);
 
             fseek(file, CRC_SZ, SEEK_CUR);
             continue;
 
         }
+
 
         // Extract color palette information if available
         if (!memcmp(chunk_type, "PLTE", 4)) {
@@ -335,6 +331,7 @@ RenderData *decode_png(FILE *file) {
     renderData->bg_color = png_metadata.bg_color;
     renderData->set_bg = png_metadata.set_bg;
     renderData->is_srgb = png_metadata.is_srgb;
+    renderData->is_hdr = png_metadata.is_hdr;
     renderData->ret = ret;
 
     cleanup:
@@ -403,13 +400,6 @@ void _set_color(uint16_t *unfiltered,
 
                 _matrix_mult(&XYZ, &xyz2rgb_mat, &result);
 
-                // apply_R709_gamma(&result.coeffs[0]);
-                // apply_R709_gamma(&result.coeffs[1]);
-                // apply_R709_gamma(&result.coeffs[2]);
-                // apply_sRGB_gamma(&result.coeffs[0]);
-                // apply_sRGB_gamma(&result.coeffs[1]);
-                // apply_sRGB_gamma(&result.coeffs[2]);
-
                                                                     
                 CLAMP(result.coeffs[0], 1., 0.);                    
                 CLAMP(result.coeffs[1], 1., 0.);
@@ -418,9 +408,6 @@ void _set_color(uint16_t *unfiltered,
                 r = round(result.coeffs[0] * UINT16_MAX);
                 g = round(result.coeffs[1] * UINT16_MAX);
                 b = round(result.coeffs[2] * UINT16_MAX);
-                // r = round(lin_rgb[0] * UINT16_MAX);
-                // g = round(lin_rgb[1] * UINT16_MAX);
-                // b = round(lin_rgb[2] * UINT16_MAX);
 
                 free(result.coeffs);
             }

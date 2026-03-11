@@ -41,6 +41,7 @@
 
 
 #define MAX_RENDER_RATIO 0.9
+#define MIN_SCREEN_SIZE_RATIO 0.1
 
 typedef struct ColorDataF {
     float r;
@@ -73,6 +74,7 @@ typedef struct RenderData {
     uint8_t num_channels;
     bool set_bg;
     bool is_srgb;
+    bool is_hdr;
     int ret;
 } RenderData;
 

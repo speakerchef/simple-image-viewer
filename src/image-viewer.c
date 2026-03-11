@@ -88,11 +88,17 @@ int main(int argc, char **argv) {
         SDL_Event event;
         int pixel_format = SDL_PIXELFORMAT_RGBA64;
         int pitch = renderData->width * 8;
+        const float aspect_ratio = (double)renderData->width / renderData->height;
 
         SDL_Renderer *renderer = SDL_CreateRenderer(window, NULL);
         SDL_Surface *surface = SDL_CreateSurfaceFrom(renderData->width, renderData->height, pixel_format, renderData->color, pitch);
 
-        if (!renderData->is_srgb) {
+        /*
+         * Ambiguous sRGB and other sources
+         * already have gamma encoded in 
+         * unlike my raw HDR pipeline
+         */
+        if (renderData->is_hdr) {
             SDL_SetSurfaceColorspace(surface, SDL_COLORSPACE_SRGB_LINEAR);
         }
 
@@ -110,6 +116,9 @@ int main(int argc, char **argv) {
         free(renderData->color);
         surface = NULL;
 
+        const int min_w = MIN_SCREEN_SIZE_RATIO * display_mode->w;
+        const int min_h = MIN_SCREEN_SIZE_RATIO * display_mode->h;
+        SDL_SetWindowMinimumSize(window, min_w, min_h);
 
         while (isRunning) {
 
@@ -124,7 +133,12 @@ int main(int argc, char **argv) {
                     break;
                 }
             }
-
+            int cur_x, cur_y = 0;
+            SDL_GetWindowSize(window, &cur_x, &cur_y);
+            
+            // Maintain image aspect ratio
+            // resize.
+            SDL_SetRenderLogicalPresentation(renderer, x, y, SDL_LOGICAL_PRESENTATION_LETTERBOX);
 
             if (renderData->set_bg) {
                 SDL_SetRenderDrawColor(renderer, 
