@@ -110,6 +110,11 @@ int decode_jpeg(FILE *file, size_t file_sz){
         switch (file_marker) {
 
             case HUFFMAN_DHT: {
+                // TODO: Store each huffman table in array
+                // TODO: Figure out selection based on defined index
+                // TODO: Parse
+                //NOTE: B.2.4.2
+
                 fseek(file, -2, SEEK_CUR);
                 printf("DHT\n");
                 printf("Chunk size: %u\n", chunk_sz);
@@ -127,6 +132,8 @@ int decode_jpeg(FILE *file, size_t file_sz){
 
 
             case JPEG_DQT: {
+                //TODO: Parse
+                //NOTE: B.2.4.1
                 fseek(file, -2, SEEK_CUR);
                 printf("DQT\n");
                 printf("Chunk size: %u\n", chunk_sz);
@@ -138,11 +145,12 @@ int decode_jpeg(FILE *file, size_t file_sz){
                 }
                 printf("\n");
 
-                break;
-            }
+                break; }
 
 
             case JPEG_DRI: {
+                // TODO: Parse
+                //NOTE: B.2.4.4
                 fseek(file, -2, SEEK_CUR);
                 printf("DRI\n");
                 printf("Chunk size: %u\n", chunk_sz);
@@ -157,6 +165,7 @@ int decode_jpeg(FILE *file, size_t file_sz){
 
 
             case JPEG_SOS: {
+                // TODO: Dispatch info to right location
                 fseek(file, -2, SEEK_CUR);
                 printf("SOS\n");
                 printf("Chunk size: %u\n", chunk_sz);
