@@ -40,13 +40,13 @@ int decode_jpeg(FILE *file, size_t file_sz){
     }
 
     /* Print binary for debug */
-    fseek(file, 0, SEEK_SET);
-    unsigned char total_dat[file_sz];
-    fread(total_dat, sizeof(char), file_sz, file);
-    for (size_t i = 0; i < file_sz; i++) {
-        printf("%02x ", total_dat[i]);
-    }
-    printf("\n");
+    // fseek(file, 0, SEEK_SET);
+    // unsigned char total_dat[file_sz];
+    // fread(total_dat, sizeof(char), file_sz, file);
+    // for (size_t i = 0; i < file_sz; i++) {
+    //     printf("%02x ", total_dat[i]);
+    // }
+    // printf("\n");
     /**/
 
     fseek(file, 0, SEEK_SET);
@@ -108,6 +108,7 @@ int decode_jpeg(FILE *file, size_t file_sz){
        }
 
         switch (file_marker) {
+
             case HUFFMAN_DHT: {
                 fseek(file, -2, SEEK_CUR);
                 printf("DHT\n");
@@ -123,6 +124,8 @@ int decode_jpeg(FILE *file, size_t file_sz){
                 // fseek(file, -(short)chunk_sz, SEEK_CUR);
                 break;
             }
+
+
             case JPEG_DQT: {
                 fseek(file, -2, SEEK_CUR);
                 printf("DQT\n");
@@ -135,9 +138,10 @@ int decode_jpeg(FILE *file, size_t file_sz){
                 }
                 printf("\n");
 
-                // fseek(file, -(short)chunk_sz, SEEK_CUR);
                 break;
             }
+
+
             case JPEG_DRI: {
                 fseek(file, -2, SEEK_CUR);
                 printf("DRI\n");
@@ -148,24 +152,75 @@ int decode_jpeg(FILE *file, size_t file_sz){
                     printf("%02x ", jpeg_metadata.qtable_data[i]);
                 }
                 printf("\n");
-                // fseek(file, -(short)chunk_sz, SEEK_CUR);
                 break;
             }
+
+
             case JPEG_SOS: {
                 fseek(file, -2, SEEK_CUR);
                 printf("SOS\n");
                 printf("Chunk size: %u\n", chunk_sz);
 
-                jpeg_metadata.scan_header_data = calloc(chunk_sz, sizeof(char));
-                // jpeg_metadata.image_data = calloc(1, sizeof(char));
+                unsigned char *scan_header_data = calloc(chunk_sz, sizeof(char));
                 unsigned char *temp = calloc(1, sizeof(char));
 
-                fread(jpeg_metadata.scan_header_data, sizeof(char), chunk_sz, file);
+                fread(scan_header_data, sizeof(char), chunk_sz, file);
                 for (size_t i = 0; i < chunk_sz; i++) {
-                    printf("%02x ", jpeg_metadata.scan_header_data[i]);
+                    printf("%02x ", scan_header_data[i]);
                 }
                 printf("\n");
 
+
+                // Read in scan header params
+                // NOTE: No checking against huffman coding type
+                // -- Assuming baseline or extended DCT
+                // Table B.3 (itu-T81)
+                uint8_t num_components; // Param used for j (Cs_j, Td_j, Ta_j)
+                uint8_t seq_len;
+
+                num_components = scan_header_data[2];
+                printf("Num components: %u\n", num_components);
+                seq_len = 6 + 2 * num_components;
+
+                uint8_t Cs_scan_com_selec[num_components];
+                uint8_t Td_dht_choice_selec[num_components]; // Out of 4 available DHT
+                uint8_t Ta_ac_selec[num_components]; // Not used (arithmetic coding)
+
+                uint8_t Ss_first_dct_coeff_selectn; // (start of spectral/predictor selection)
+                uint8_t Se_end_spect_selectn;
+                uint8_t Ah_approx_highbit;
+                uint8_t Ah_approx_lowbit;
+
+                
+
+                //Reading in header components
+                for (long j = 0; j < num_components; j++) {
+                    size_t stride = j * 2;
+                    Cs_scan_com_selec[j] = scan_header_data[3 + stride];
+                    Td_dht_choice_selec[j] = ( scan_header_data[3 + stride + 1] >> 4 ) & 0x0F;
+                    Ta_ac_selec[j] = scan_header_data[3 + stride + 1] & 0x0F;
+                }
+
+                Ss_first_dct_coeff_selectn = scan_header_data[seq_len - 3];
+                Se_end_spect_selectn = scan_header_data[seq_len - 2];
+                Ah_approx_highbit = ( scan_header_data[seq_len - 1] >> 4 ) & 0x0F;
+                Ah_approx_lowbit = ( scan_header_data[seq_len - 1] ) & 0x0F;
+
+                // test variable chunks
+                for (int i = 0; i < num_components; i++) {
+                    printf("Cs_j = %u ", Cs_scan_com_selec[i]);
+                    printf("Td_j = %u ", Td_dht_choice_selec[i]);
+                    printf("Ta_j = %u\n", Ta_ac_selec[i]);
+                }
+                printf("Ss: %u, Se: %u, Ah_high: %u, Ah_low: %u \n", 
+                       Ss_first_dct_coeff_selectn,
+                       Se_end_spect_selectn,
+                       Ah_approx_highbit,
+                       Ah_approx_lowbit);
+
+
+
+                // Read in image data
                 size_t counter = 0;
                 while (fread(&temp[counter], sizeof(char), 1, file) &&
                         ntohs( temp[counter] ) != JPEG_EOI){
@@ -174,6 +229,7 @@ int decode_jpeg(FILE *file, size_t file_sz){
                     temp = realloc(temp, counter + 1);
                 };
 
+
                 size_t offset = counter - 2;
                 jpeg_metadata.image_data = calloc(offset, sizeof(char));
                 for (size_t i = 0; i < offset; i++) {
@@ -181,11 +237,12 @@ int decode_jpeg(FILE *file, size_t file_sz){
                 }
                 free(temp);
                 
+
                 printf("EOI\n");
                 printf("Image data: \n");
-                for (size_t i = 0; i < offset; i++) {
-                    printf("%02x ", jpeg_metadata.image_data[i]);
-                }
+                // for (size_t i = 0; i < offset; i++) {
+                //     printf("%02x ", jpeg_metadata.image_data[i]);
+                // }
                 printf("\n");
                 terminate = 1;
                 break;

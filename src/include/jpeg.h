@@ -50,7 +50,7 @@ typedef struct {
     ColorData8 *color_data;
     unsigned char *image_data;
     unsigned char *huffman_coding_data;
-    unsigned char *scan_header_data;
+    // unsigned char *scan_header_data;
     unsigned char *huffman_table;
     unsigned char *qtable_data;
     unsigned char *restart_interval;

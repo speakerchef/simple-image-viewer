@@ -6,3 +6,4 @@
 # https://en.wikipedia.org/wiki/CIE_1931_color_space -- XYZ INFO
 # https://www.itu.int/rec/T-REC-H.273-202407-I/en
 # http://www.brucelindbloom.com/index.html?Eqn_RGB_XYZ_Matrix.html
+# https://www.w3.org/Graphics/JPEG/itu-t81.pdf
