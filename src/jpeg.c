@@ -68,19 +68,13 @@ int decode_jpeg(FILE *file, size_t file_sz){
                 if (!(jpeg_metadata.huffman_table = calloc(sizeof(char), chunk_sz))) { return PROC_FAILURE; };
                 if (!fread(jpeg_metadata.huffman_table, sizeof(char), chunk_sz, file)) { goto cleanup; };
 
-
-
-
-
                 for (size_t i = 0; i < chunk_sz; i++) {
                     printf("%02x ", jpeg_metadata.huffman_table[i]);
                 }
                 printf("\n");
 
-                // fseek(file, -(short)chunk_sz, SEEK_CUR);
                 break;
             }
-
 
             case JPEG_DQT: {
                 //TODO: Parse
