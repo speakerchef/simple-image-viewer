@@ -1,4 +1,5 @@
 #include "include/jpeg.h"
+#include "include/utils.h"
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -10,6 +11,12 @@ int decode_jpeg(FILE *file, size_t file_sz){
     JPEG_Metadata jpeg_metadata = {0};
 
 
+    /*  */
+    unsigned char APP0_Marker[2]; // TODO: Use to validate integrity
+    uint16_t APP0_len;
+    unsigned char APP0_ident[5]; // "JFIF"
+    unsigned char JFIF_Vers[2];
+    unsigned char density_unit;
     unsigned char APP0_ext_Marker[2]; // Used to check if extension segment exists
     bool has_extension = false;
 
@@ -18,11 +25,11 @@ int decode_jpeg(FILE *file, size_t file_sz){
     unsigned char APP0_ext_thumb_fmt;
     unsigned char *thumbnail_dat = NULL;
     
-    fread(jpeg_metadata.APP0_Marker, sizeof(char), 2, file);
-    fread(&jpeg_metadata.APP0_len, sizeof(char), 2, file);
-    fread(jpeg_metadata.APP0_ident, sizeof(char), 5, file);
-    fread(jpeg_metadata.JFIF_Vers, sizeof(char), 2, file);
-    fread(&jpeg_metadata.density_unit, sizeof(char), 1, file);
+    fread(APP0_Marker, sizeof(char), 2, file);
+    fread(&APP0_len, sizeof(char), 2, file);
+    fread(APP0_ident, sizeof(char), 5, file);
+    fread(JFIF_Vers, sizeof(char), 2, file);
+    fread(&density_unit, sizeof(char), 1, file);
     fread(&jpeg_metadata.x_dens, sizeof(char), 2, file);
     fread(&jpeg_metadata.y_dens, sizeof(char), 2, file);
     fread(&jpeg_metadata.thumbnail_w, sizeof(char), 1, file);
@@ -67,6 +74,7 @@ int decode_jpeg(FILE *file, size_t file_sz){
     printf("\n");
 
     bool terminate = 0;
+    static size_t dht_count = 0;
 
     while (!terminate) {
 
@@ -110,7 +118,7 @@ int decode_jpeg(FILE *file, size_t file_sz){
         switch (file_marker) {
 
             case HUFFMAN_DHT: {
-                // TODO: Store each huffman table in array
+                // In progress: Store each huffman table in array
                 // TODO: Figure out selection based on defined index
                 // TODO: Parse
                 //NOTE: B.2.4.2
@@ -118,8 +126,12 @@ int decode_jpeg(FILE *file, size_t file_sz){
                 fseek(file, -2, SEEK_CUR);
                 printf("DHT\n");
                 printf("Chunk size: %u\n", chunk_sz);
-                jpeg_metadata.huffman_table = calloc(sizeof(char), chunk_sz);
-                fread(jpeg_metadata.huffman_table, sizeof(char), chunk_sz, file);
+                if (!(jpeg_metadata.huffman_table = calloc(sizeof(char), chunk_sz))) { return PROC_FAILURE; };
+                if (!fread(jpeg_metadata.huffman_table, sizeof(char), chunk_sz, file)) { goto cleanup; };
+
+
+
+
 
                 for (size_t i = 0; i < chunk_sz; i++) {
                     printf("%02x ", jpeg_metadata.huffman_table[i]);
@@ -137,8 +149,8 @@ int decode_jpeg(FILE *file, size_t file_sz){
                 fseek(file, -2, SEEK_CUR);
                 printf("DQT\n");
                 printf("Chunk size: %u\n", chunk_sz);
-                jpeg_metadata.qtable_data = calloc(sizeof(char), chunk_sz);
-                fread(jpeg_metadata.qtable_data, sizeof(char), chunk_sz, file);
+                if (!(jpeg_metadata.qtable_data = calloc(sizeof(char), chunk_sz))) { return PROC_FAILURE; };
+                if (!fread(jpeg_metadata.qtable_data, sizeof(char), chunk_sz, file)) { goto cleanup; };
 
                 for (size_t i = 0; i < chunk_sz; i++) {
                     printf("%02x ", jpeg_metadata.qtable_data[i]);
@@ -154,10 +166,11 @@ int decode_jpeg(FILE *file, size_t file_sz){
                 fseek(file, -2, SEEK_CUR);
                 printf("DRI\n");
                 printf("Chunk size: %u\n", chunk_sz);
-                jpeg_metadata.restart_interval = calloc(chunk_sz, sizeof(char));
+                if (!(jpeg_metadata.restart_interval = calloc(sizeof(char), chunk_sz))) { return PROC_FAILURE; };
+                if (!fread(jpeg_metadata.restart_interval, sizeof(char), chunk_sz, file)) { goto cleanup; }
 
                 for (size_t i = 0; i < chunk_sz; i++) {
-                    printf("%02x ", jpeg_metadata.qtable_data[i]);
+                    printf("%02x ", jpeg_metadata.restart_interval[i]);
                 }
                 printf("\n");
                 break;
@@ -171,9 +184,11 @@ int decode_jpeg(FILE *file, size_t file_sz){
                 printf("Chunk size: %u\n", chunk_sz);
 
                 unsigned char *scan_header_data = calloc(chunk_sz, sizeof(char));
+                if (!scan_header_data) { return PROC_FAILURE; }
                 unsigned char *temp = calloc(1, sizeof(char));
+                if (!temp) { return PROC_FAILURE; }
 
-                fread(scan_header_data, sizeof(char), chunk_sz, file);
+                if (!fread(scan_header_data, sizeof(char), chunk_sz, file)) { goto cleanup; };
                 for (size_t i = 0; i < chunk_sz; i++) {
                     printf("%02x ", scan_header_data[i]);
                 }
@@ -214,6 +229,8 @@ int decode_jpeg(FILE *file, size_t file_sz){
                 Se_end_spect_selectn = scan_header_data[seq_len - 2];
                 Ah_approx_highbit = ( scan_header_data[seq_len - 1] >> 4 ) & 0x0F;
                 Ah_approx_lowbit = ( scan_header_data[seq_len - 1] ) & 0x0F;
+
+                free(scan_header_data);
 
                 // test variable chunks
                 for (int i = 0; i < num_components; i++) {
@@ -260,6 +277,15 @@ int decode_jpeg(FILE *file, size_t file_sz){
         }
     }
     printf("\n");
+
+cleanup:
+    free(jpeg_metadata.image_data);
+    free(jpeg_metadata.huffman_coding_data);
+    free(jpeg_metadata.dht_table);
+    free(jpeg_metadata.huffman_table);
+    free(jpeg_metadata.qtable_data);
+    free(jpeg_metadata.restart_interval);
+ 
 
     return 0;
 }

@@ -13,6 +13,7 @@
 #include "utils.h"
 
 #define FILE_STRIDE 2
+#define DHT_LEN 4
 
 typedef enum {
     // Huffman coding types
@@ -50,7 +51,7 @@ typedef struct {
     ColorData8 *color_data;
     unsigned char *image_data;
     unsigned char *huffman_coding_data;
-    // unsigned char *scan_header_data;
+    unsigned char *dht_table[DHT_LEN];
     unsigned char *huffman_table;
     unsigned char *qtable_data;
     unsigned char *restart_interval;
