@@ -10,68 +10,7 @@ int decode_jpeg(FILE *file, size_t file_sz){
     const unsigned char APP0_mk[2] = {0xff, 0xe0};
     JPEG_Metadata jpeg_metadata = {0};
 
-
-    /*  */
-    unsigned char APP0_Marker[2]; // TODO: Use to validate integrity
-    uint16_t APP0_len;
-    unsigned char APP0_ident[5]; // "JFIF"
-    unsigned char JFIF_Vers[2];
-    unsigned char density_unit;
-    unsigned char APP0_ext_Marker[2]; // Used to check if extension segment exists
-    bool has_extension = false;
-
-    unsigned char APP0_ext_len[2];
-    unsigned char APP0_ext_ident[5];
-    unsigned char APP0_ext_thumb_fmt;
-    unsigned char *thumbnail_dat = NULL;
-    
-    fread(APP0_Marker, sizeof(char), 2, file);
-    fread(&APP0_len, sizeof(char), 2, file);
-    fread(APP0_ident, sizeof(char), 5, file);
-    fread(JFIF_Vers, sizeof(char), 2, file);
-    fread(&density_unit, sizeof(char), 1, file);
-    fread(&jpeg_metadata.x_dens, sizeof(char), 2, file);
-    fread(&jpeg_metadata.y_dens, sizeof(char), 2, file);
-    fread(&jpeg_metadata.thumbnail_w, sizeof(char), 1, file);
-    fread(&jpeg_metadata.thumbnail_h, sizeof(char), 1, file);
-    fread(APP0_ext_Marker, sizeof(char), 2, file);
-
-
-    if (!memcmp(APP0_ext_Marker, APP0_mk, 2)) {
-        printf("There is an extension\n");
-        fread(APP0_ext_len, sizeof(char), 2, file);
-        fread(APP0_ext_ident, sizeof(char), 5, file);
-        fread(&APP0_ext_thumb_fmt, sizeof(char), 1, file);
-    } else {
-        fseek(file, -2, SEEK_CUR);
-    }
-
-    /* Print binary for debug */
-    // fseek(file, 0, SEEK_SET);
-    // unsigned char total_dat[file_sz];
-    // fread(total_dat, sizeof(char), file_sz, file);
-    // for (size_t i = 0; i < file_sz; i++) {
-    //     printf("%02x ", total_dat[i]);
-    // }
-    // printf("\n");
-    /**/
-
     fseek(file, 0, SEEK_SET);
-
-
-    printf("APPO len: %u, JFIF_Vers: %02x %02x, \
-            \nthumb_w: %02x, thumb_h: %02x, Density Unit: %02x, \
-            \nyDens: %u, xDens: %u\n", 
-           jpeg_metadata.APP0_len, 
-           jpeg_metadata.JFIF_Vers[0], 
-           jpeg_metadata.JFIF_Vers[1], 
-           jpeg_metadata.thumbnail_w, 
-           jpeg_metadata.thumbnail_h, 
-           jpeg_metadata.density_unit, 
-           jpeg_metadata.y_dens, 
-           jpeg_metadata.x_dens);
-
-    printf("\n");
 
     bool terminate = 0;
     static size_t dht_count = 0;
